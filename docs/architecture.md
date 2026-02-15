@@ -565,6 +565,42 @@ class FileBasedResourcePack:
         return [self.prefix]  # Optional aliases (pack name is auto-registered)
 ```
 
+### 8.4 Using ZippedResourcePack
+
+The `ZippedResourcePack` helper class provides a complete implementation for packs that bundle resources in a zip file:
+
+```python
+from justmyresource.pack_utils import ZippedResourcePack
+
+class LucideIconPack(ZippedResourcePack):
+    """Lucide icon pack using zip storage."""
+    
+    def __init__(self):
+        super().__init__(
+            package_name="jmr_lucide",
+            archive_name="icons.zip",
+            default_content_type="image/svg+xml",
+            prefixes=["luc"]
+        )
+    
+    def _normalize_name(self, name: str) -> str:
+        """Add .svg extension if not present."""
+        if not name.endswith('.svg'):
+            return f"{name}.svg"
+        return name
+
+def get_resource_provider():
+    return LucideIconPack()
+```
+
+This eliminates boilerplate and ensures consistent behavior across packs. The helper provides:
+
+- **Lazy loading**: Zip only opened when resources are accessed
+- **Efficient listing**: Resource list is cached, no content loading during listing
+- **Manifest support**: Optional `pack_manifest.json` for metadata
+- **Variant support**: Handles subdirectories (e.g., `outlined/icon.svg`)
+- **Error handling**: Helpful error messages with suggestions for missing resources
+
 ## 9. Best Practices
 
 ### 9.1 Implementation Recommendations

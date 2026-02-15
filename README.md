@@ -218,6 +218,29 @@ def get_resource_provider():
     return MyResourcePack()
 ```
 
+### Using ZippedResourcePack Helper
+
+For packs that bundle resources in a zip file, use the provided helper class:
+
+```python
+# my_icon_pack/__init__.py
+from justmyresource.pack_utils import ZippedResourcePack
+
+class MyIconPack(ZippedResourcePack):
+    def __init__(self):
+        super().__init__(
+            package_name="my_icon_pack",
+            archive_name="icons.zip",
+            default_content_type="image/svg+xml",
+            prefixes=["myicons"]
+        )
+
+def get_resource_provider():
+    return MyIconPack()
+```
+
+This provides zip reading, caching, manifest support, and error handling out of the box.
+
 ## Architecture
 
 JustMyResource follows a unified "Resource Pack" architecture where all resource sources implement the same `ResourcePack` protocol. This ensures:
