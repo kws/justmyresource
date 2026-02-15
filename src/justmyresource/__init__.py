@@ -1,6 +1,7 @@
 """JustMyResource - Resource discovery and resolution library."""
 
 from justmyresource.core import ResourceRegistry, get_default_registry
+from justmyresource.pack_utils import ZippedResourcePack
 from justmyresource.types import (
     PrefixCollisionWarning,
     RegisteredPack,
@@ -18,5 +19,6 @@ __all__ = [
     "ResourceInfo",
     "ResourcePack",
     "ResourceRegistry",
+    "ZippedResourcePack",
     "get_default_registry",
 ]
