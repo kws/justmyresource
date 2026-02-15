@@ -523,3 +523,47 @@ def test_list_resources_uses_default_content_type():
         assert resources[0].content_type == "image/svg+xml"
         assert resources[0].name == "icon1"
         assert resources[0].pack == "test-dist/test-pack"
+
+
+def test_resolve_name_purity():
+    """Test that _resolve_name() is pure and does not trigger discovery/I/O.
+
+    This test ensures the resolution kernel invariant: _resolve_name() must
+    only read from in-memory registry state and never perform I/O operations.
+    """
+    pack1 = MockResourcePack(
+        resources={"icon1": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        registry = ResourceRegistry()
+        # Trigger discovery once to populate state
+        registry.discover()
+
+        # Patch _get_entry_points to raise if called (should not be called during resolution)
+        with patch(
+            "justmyresource.core.ResourceRegistry._get_entry_points",
+            side_effect=AssertionError("_resolve_name() should not trigger discovery"),
+        ):
+            # _resolve_name() should work without triggering discovery
+            qualified_name, resource_name = registry._resolve_name(
+                "acme-icons/lucide:icon1"
+            )
+            assert qualified_name == "acme-icons/lucide"
+            assert resource_name == "icon1"
+
+            # Test with short name
+            qualified_name, resource_name = registry._resolve_name("lucide:icon1")
+            assert qualified_name == "acme-icons/lucide"
+            assert resource_name == "icon1"
+
+            # Test with default_prefix
+            registry._default_prefix = "lucide"
+            qualified_name, resource_name = registry._resolve_name("icon1")
+            assert qualified_name == "acme-icons/lucide"
+            assert resource_name == "icon1"

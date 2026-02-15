@@ -104,7 +104,8 @@ class ZippedResourcePack:
             # Provide helpful error with suggestions
             available = self._get_resource_list()
             suggestions = [
-                n for n in available
+                n
+                for n in available
                 if name.lower() in n.lower() or n.lower() in name.lower()
             ][:5]
             suggestion_text = (
@@ -115,8 +116,12 @@ class ZippedResourcePack:
             ) from None
 
         # Determine encoding based on content type
-        encoding = "utf-8" if self.default_content_type.startswith("text/") or \
-                             self.default_content_type == "image/svg+xml" else None
+        encoding = (
+            "utf-8"
+            if self.default_content_type.startswith("text/")
+            or self.default_content_type == "image/svg+xml"
+            else None
+        )
 
         # Build metadata
         manifest = self.get_manifest()
@@ -155,8 +160,7 @@ class ZippedResourcePack:
             with self._open_zip() as zip_file:
                 # Get all files (not directories)
                 self._resource_list = sorted(
-                    name for name in zip_file.namelist()
-                    if not name.endswith('/')
+                    name for name in zip_file.namelist() if not name.endswith("/")
                 )
         return self._resource_list
 
@@ -175,4 +179,3 @@ class ZippedResourcePack:
             List of prefix aliases.
         """
         return self._prefixes
-

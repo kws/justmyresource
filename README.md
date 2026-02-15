@@ -39,8 +39,9 @@ if content.content_type == "image/svg+xml":
     svg_text = content.text  # Decode as UTF-8
     # Use SVG text...
 
-# Get resource without prefix (searches by priority)
-content = registry.get_resource("logo")
+# Get resource without prefix (requires default_prefix to be set)
+registry = ResourceRegistry(default_prefix="lucide")
+content = registry.get_resource("lightbulb")  # Resolves as "lucide:lightbulb"
 ```
 
 ## Basic Usage
@@ -58,8 +59,9 @@ content = registry.get_resource("acme-icons/lucide:lightbulb")
 # Get resource with short pack name (works if unique)
 content = registry.get_resource("lucide:lightbulb")
 
-# Get resource without prefix (searches packs by priority)
-content = registry.get_resource("logo")
+# Get resource without prefix (requires default_prefix to be set)
+registry = ResourceRegistry(default_prefix="lucide")
+content = registry.get_resource("lightbulb")  # Resolves as "lucide:lightbulb"
 
 # Access resource data
 if content.content_type == "image/svg+xml":
@@ -99,7 +101,7 @@ registry = ResourceRegistry(blocklist={"broken-pack", "acme-icons/lucide"})
 
 ### Handling Prefix Collisions
 
-When multiple packs claim the same prefix, the registry emits warnings and resolves by priority:
+When multiple packs claim the same prefix, the registry emits warnings and marks the prefix as ambiguous. No winner is picked—you must use qualified names or `prefix_map` to resolve:
 
 ```python
 import warnings
@@ -112,6 +114,9 @@ registry = ResourceRegistry()
 # Both packs remain accessible via qualified names
 content1 = registry.get_resource("acme-icons/lucide:lightbulb")
 content2 = registry.get_resource("cool-icons/lucide:lightbulb")
+
+# Short name raises error (ambiguous):
+# registry.get_resource("lucide:lightbulb")  # ValueError: ambiguous
 
 # Inspect collisions
 collisions = registry.get_prefix_collisions()
@@ -188,9 +193,6 @@ class MyAppResourcePack:
             if path.suffix in (".svg", ".png"):
                 yield path.stem
     
-    def get_priority(self) -> int:
-        return 100
-    
     def get_prefixes(self) -> list[str]:
         return ["myapp"]  # Optional aliases (pack name is auto-registered)
 
@@ -247,7 +249,7 @@ JustMyResource follows a unified "Resource Pack" architecture where all resource
 
 - **Consistency**: All resources are discovered and resolved the same way
 - **Extensibility**: New resource sources can be added via EntryPoints
-- **Priority**: Resource packs (priority 100) override system resources (priority 0, future)
+- **Flat Pack Model**: All packs are equal; uniquely identified by their FQN (dist/pack)
 
 See `docs/architecture.md` for detailed architecture documentation.
 

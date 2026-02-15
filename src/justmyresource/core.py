@@ -312,6 +312,15 @@ class ResourceRegistry:
     def _resolve_name(self, name: str) -> tuple[str, str]:
         """Resolve a resource name to (qualified_pack_name, resource_name).
 
+        **Resolution Kernel Invariant**: This method is intentionally a **pure function**
+        with no side effects. It must:
+        - Perform **no I/O** (no filesystem, network, environment variable reads, or discovery)
+        - Only read from in-memory registry state: `_packs`, `_prefixes`, `_collisions`, `_default_prefix`
+        - Remain deterministic and testable in isolation
+
+        This purity enables future extraction into a reusable kernel that can be shared
+        between sync and async registry implementations without logic duplication.
+
         Supports multiple resolution forms:
         - "dist/pack:resource" - fully qualified (always unique)
         - "pack:resource" - short pack name (works if unique)
@@ -352,29 +361,33 @@ class ResourceRegistry:
                     )
 
             # Short prefix: look up in prefix map
-            # First check if there's a collision (even if prefix exists, ambiguity should be reported)
+            # Check prefix_map overrides first (highest precedence, resolves collisions)
+            if prefix_lower in self._prefix_map:
+                target_qualified = self._prefix_map[prefix_lower]
+                if target_qualified in self._packs:
+                    return (target_qualified, resource_name)
+
+            # Check for collisions (ambiguous and unresolved by prefix_map)
             if prefix_lower in self._collisions:
                 qualified_names = self._collisions[prefix_lower]
-                winner = self._prefixes.get(prefix_lower)
                 msg = (
                     f"Prefix '{prefix_part}' is ambiguous (claimed by multiple packs). "
                     f"Use a qualified name: "
                 )
                 alternatives = [f"'{q}:{resource_name}'" for q in qualified_names]
-                if winner:
-                    msg += f"{', '.join(alternatives)}. Currently '{winner}' wins."
-                else:
-                    msg += ", ".join(alternatives) + "."
+                msg += ", ".join(alternatives) + "."
                 raise ValueError(msg)
 
-            if prefix_lower not in self._prefixes:
-                raise ValueError(
-                    f"Unknown resource pack prefix: {prefix_part}. "
-                    f"Available prefixes: {', '.join(sorted(self._prefixes.keys()))}"
-                )
+            # Check if prefix exists in _prefixes (unique prefix, no collision)
+            if prefix_lower in self._prefixes:
+                qualified_name = self._prefixes[prefix_lower]
+                return (qualified_name, resource_name)
 
-            qualified_name = self._prefixes[prefix_lower]
-            return (qualified_name, resource_name)
+            # Prefix not found at all
+            raise ValueError(
+                f"Unknown resource pack prefix: {prefix_part}. "
+                f"Available prefixes: {', '.join(sorted(self._prefixes.keys()))}"
+            )
         else:
             # No prefix: rewrite using default_prefix
             if self._default_prefix is None:
@@ -391,6 +404,11 @@ class ResourceRegistry:
 
     def get_resource(self, name: str) -> ResourceContent:
         """Get resource content by name.
+
+        Execution flow: **discover (I/O) → resolve (pure kernel) → execute (pack I/O)**
+        1. `discover()` - Loads packs from EntryPoints (I/O: filesystem, environment)
+        2. `_resolve_name()` - Pure resolution logic (no I/O, reads only in-memory state)
+        3. `pack.get_resource()` - Pack-specific I/O (filesystem, network, etc.)
 
         Supports multiple resolution forms:
         - "dist/pack:resource" - fully qualified (always unique)
@@ -443,7 +461,7 @@ class ResourceRegistry:
             registered_pack = self._packs[qualified_name]
             # Get content type hint from pack if available (duck-typed, optional)
             content_type: str | None = getattr(
-                registered_pack.pack, 'default_content_type', None
+                registered_pack.pack, "default_content_type", None
             )
             for resource_name in registered_pack.pack.list_resources():
                 yield ResourceInfo(
@@ -456,7 +474,7 @@ class ResourceRegistry:
             for qualified_name, registered_pack in self._packs.items():
                 # Get content type hint from pack if available (duck-typed, optional)
                 content_type: str | None = getattr(
-                    registered_pack.pack, 'default_content_type', None
+                    registered_pack.pack, "default_content_type", None
                 )
                 for resource_name in registered_pack.pack.list_resources():
                     yield ResourceInfo(
