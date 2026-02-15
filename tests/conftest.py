@@ -33,7 +33,8 @@ class MockResourcePack:
         self,
         resources: dict[str, ResourceContent],
         priority: int = 100,
-        name: str = "test-pack",
+        dist_name: str = "test-dist",
+        pack_name: str = "test-pack",
         prefixes: list[str] | None = None,
     ) -> None:
         """Initialize mock resource pack.
@@ -41,12 +42,14 @@ class MockResourcePack:
         Args:
             resources: Dictionary mapping resource names to ResourceContent.
             priority: Priority of this pack.
-            name: Name of this pack.
-            prefixes: List of prefixes for this pack.
+            dist_name: Distribution name (for testing qualified names).
+            pack_name: Pack name (entry point name).
+            prefixes: List of alias prefixes for this pack.
         """
         self.resources = resources
         self._priority = priority
-        self._name = name
+        self._dist_name = dist_name
+        self._pack_name = pack_name
         self._prefixes = prefixes or []
 
     def get_resource(self, name: str) -> ResourceContent:
@@ -62,10 +65,6 @@ class MockResourcePack:
     def get_priority(self) -> int:
         """Return priority."""
         return self._priority
-
-    def get_name(self) -> str:
-        """Return pack name."""
-        return self._name
 
     def get_prefixes(self) -> list[str]:
         """Return prefixes."""
