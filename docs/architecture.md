@@ -109,18 +109,6 @@ class ResourcePack(Protocol):
         """
         ...
     
-    def get_priority(self) -> int:
-        """Return priority for this pack (higher = processed first).
-        
-        Standard priorities:
-        - Resource Packs: 100
-        - System Resources: 0 (future consideration)
-        
-        Returns:
-            Integer priority value (higher = higher priority).
-        """
-        ...
-    
     def get_prefixes(self) -> list[str]:
         """Return list of optional alias prefixes that map to this pack.
         
@@ -219,20 +207,28 @@ The `ResourceRegistry` automatically discovers and loads resource packs:
 class ResourceRegistry:
     """Registry for resource packs."""
     
-    def __init__(self, blocklist: set[str] | None = None) -> None:
-        """Initialize registry with optional blocklist."""
+    def __init__(
+        self,
+        blocklist: set[str] | None = None,
+        prefix_map: dict[str, str] | None = None,
+        default_prefix: str | None = None,
+    ) -> None:
+        """Initialize registry with optional blocklist, prefix_map, and default_prefix."""
         self._packs: dict[str, ResourcePack] = {}
         self._prefixes: dict[str, str] = {}  # prefix -> pack_name
         self._discovered = False
         self._blocklist = self._parse_blocklist(blocklist)
+        self._prefix_map = self._parse_prefix_map(prefix_map)
+        self._default_prefix = self._parse_default_prefix(default_prefix)
     
     def discover(self) -> None:
         """Discover resource packs from EntryPoints (lazy, runs once)."""
         if self._discovered:
             return
         
-        # Load packs from entry points, sort by priority
-        # Register packs and their prefixes
+        # Load packs from entry points, sort by FQN for deterministic ordering
+        # Register packs and their prefixes (with collision detection)
+        # Apply prefix_map overrides
         ...
     
     def get_resource(self, name: str) -> ResourceContent:
@@ -242,7 +238,7 @@ class ResourceRegistry:
         - "dist/pack:resource" - fully qualified (always unique)
         - "pack:resource" - short pack name (works if unique)
         - "alias:resource" - alias from get_prefixes() (works if unique)
-        - "resource" - priority-order search (no prefix)
+        - "resource" - rewritten to "{default_prefix}:resource" if default_prefix is set
         """
         ...
     
@@ -273,8 +269,9 @@ Resources can be referenced using multiple resolution forms, from most specific 
    - `luc:lightbulb` - Short alias for "lucide"
    - `mi:settings` - Short alias for "material-icons"
 
-4. **Priority Search** (`resource`) - No prefix, searches by priority
-   - `lightbulb` - Searches all packs in priority order until found
+4. **Bare Name** (`resource`) - No prefix, rewritten using `default_prefix`
+   - `lightbulb` - Resolved as `{default_prefix}:lightbulb` if default_prefix is set
+   - Raises error if no default_prefix is configured
 
 ### 5.2 Resolution Algorithm
 
@@ -286,7 +283,9 @@ Resources can be referenced using multiple resolution forms, from most specific 
    - Check aliases from `get_prefixes()`
    - Check short pack names (entry point names)
    - If ambiguous (collision), raise error with qualified alternatives
-4. If no `:` at all, iterate packs by priority until resource is found
+4. If no `:` at all (bare name):
+   - If `default_prefix` is set, rewrite as `{default_prefix}:name` and resolve recursively
+   - If `default_prefix` is not set, raise `ValueError` with guidance
 
 ### 5.3 Pack Identity and Qualified Names
 
@@ -311,26 +310,32 @@ The qualified name `acme-icons/lucide` is always registered as a prefix, ensurin
 When multiple packs claim the same prefix (short name or alias), the registry:
 
 1. **Emits `PrefixCollisionWarning`** - Alerts users to the collision
-2. **Resolves by Priority** - Higher priority pack wins
+2. **Marks as Ambiguous** - No winner is picked; the prefix becomes ambiguous
 3. **Tracks Collisions** - Available via `get_prefix_collisions()`
-4. **Preserves Access** - Both packs remain accessible via qualified names
+4. **Preserves Access** - Both packs remain accessible via qualified names or `prefix_map`
 
 Example collision scenario:
 ```python
 # Two different distributions both register "lucide" pack
-# acme-icons/lucide (priority 100)
-# cool-icons/lucide (priority 100)
+# acme-icons/lucide
+# cool-icons/lucide
 
 registry = ResourceRegistry()
 # Warning: Prefix 'lucide' collision: pack name 'lucide' from 'cool-icons/lucide' 
-# conflicts with 'acme-icons/lucide' (both priority 100). 
-# 'acme-icons/lucide' wins (registered first). 
-# Use qualified name 'cool-icons/lucide:resource' to access the other pack.
+# conflicts with 'acme-icons/lucide'. The prefix is ambiguous.
+# Use qualified names ('acme-icons/lucide:resource' or 'cool-icons/lucide:resource') 
+# or configure prefix_map to resolve.
 
-# Both are accessible:
+# Both are accessible via FQN:
 content1 = registry.get_resource("acme-icons/lucide:lightbulb")  # Explicit
 content2 = registry.get_resource("cool-icons/lucide:lightbulb")  # Explicit
-content1 = registry.get_resource("lucide:lightbulb")  # Uses acme-icons/lucide (first registered)
+
+# Short name raises error (ambiguous):
+# registry.get_resource("lucide:lightbulb")  # ValueError: ambiguous
+
+# Can be resolved via prefix_map:
+registry = ResourceRegistry(prefix_map={"lucide": "acme-icons/lucide"})
+content = registry.get_resource("lucide:lightbulb")  # Works, resolves to acme-icons/lucide
 ```
 
 ### 5.5 Prefix Map Overrides
@@ -362,6 +367,7 @@ The resource registry provides a unified interface for resource lookup and resol
 registry = ResourceRegistry(
     blocklist={"broken-pack"},  # Block specific packs
     prefix_map={"icons": "acme-icons/lucide"},  # Override prefix mappings
+    default_prefix="lucide",  # Default prefix for bare-name lookups
 )
 
 # Get resource with fully qualified name (always unique)
@@ -373,8 +379,9 @@ content = registry.get_resource("lucide:lightbulb")
 # Get resource with alias
 content = registry.get_resource("luc:lightbulb")
 
-# Get resource without prefix (searches by priority)
-content = registry.get_resource("lightbulb")
+# Get resource with default_prefix (bare name)
+registry = ResourceRegistry(default_prefix="lucide")
+content = registry.get_resource("lightbulb")  # Resolves as "lucide:lightbulb"
 
 # List all resources
 for resource_info in registry.list_resources():
@@ -408,16 +415,43 @@ def get_default_registry() -> ResourceRegistry:
     return _default_registry
 ```
 
-## 7. Priority and Blocklist
+## 7. Default Prefix and Blocklist
 
-### 7.1 Priority System
+### 7.1 Default Prefix
 
-Resource packs have priorities (higher = processed first):
+The registry supports a `default_prefix` for bare-name lookups (names without a colon):
 
-- **Resource Packs**: Priority 100 (highest)
-- **System Resources**: Priority 0 (future consideration, lowest)
+```python
+# Set default prefix via constructor
+registry = ResourceRegistry(default_prefix="lucide")
 
-When multiple packs provide the same resource name, the highest priority pack wins.
+# Bare names are rewritten using default_prefix
+content = registry.get_resource("lightbulb")  # Resolves as "lucide:lightbulb"
+
+# Can use FQN, short name, or alias as default_prefix
+registry = ResourceRegistry(default_prefix="acme-icons/lucide")  # FQN
+registry = ResourceRegistry(default_prefix="luc")  # Alias
+
+# Via environment variable
+# RESOURCE_DEFAULT_PREFIX="lucide" python app.py
+```
+
+**Important:** If `default_prefix` points to an ambiguous prefix (collision), it will raise an error unless resolved via `prefix_map`:
+
+```python
+# Two packs collide on "lucide"
+registry = ResourceRegistry(default_prefix="lucide")  # No prefix_map
+registry.get_resource("lightbulb")  # ValueError: ambiguous
+
+# Resolve via prefix_map
+registry = ResourceRegistry(
+    default_prefix="lucide",
+    prefix_map={"lucide": "acme-icons/lucide"},
+)
+registry.get_resource("lightbulb")  # Works
+```
+
+If no `default_prefix` is set and a bare name is used, a `ValueError` is raised with guidance.
 
 ### 7.2 Blocklist Support
 
@@ -451,8 +485,12 @@ if content.content_type == "image/svg+xml":
     svg_text = content.text  # Decode as UTF-8
     # Use SVG text...
 
-# Get resource without prefix (searches by priority)
-content = registry.get_resource("logo")  # Could be from any pack
+# Get resource with default_prefix
+registry = ResourceRegistry(default_prefix="lucide")
+content = registry.get_resource("lightbulb")  # Resolves as "lucide:lightbulb"
+
+# Get resource with fully qualified name (always works)
+content = registry.get_resource("acme-icons/lucide:lightbulb")
 
 # Access metadata
 if content.metadata:

@@ -25,7 +25,7 @@ You are building **JustMyResource**, a precise, lightweight, and extensible reso
 ### 2.2 The "Everything is a Pack" Unification
 * **Rule:** All resource sources are resource packs.
 * **Context:** We do not want separate logic for "Bundled Resources" vs. "Third-Party Packs."
-* **Directive:** Implement all resource sources as `ResourcePack` implementations. The `ResourceRegistry` treats them uniformly, differentiated only by priority.
+* **Directive:** Implement all resource sources as `ResourcePack` implementations. The `ResourceRegistry` treats them uniformly; all packs are equal, uniquely identified by their FQN (dist/pack).
 
 ### 2.3 Content Type Over Format Guessing
 * **Rule:** Always provide explicit `content_type` in `ResourceContent`.
@@ -44,16 +44,16 @@ You are building **JustMyResource**, a precise, lightweight, and extensible reso
 
 ## 3. Architectural Mandates
 
-### 3.1 The Priority System
+### 3.1 Flat Pack Model
 **Critical Logic:**
-* **High Priority (100):** Resource Packs (Bundled/Third-party).
-* **Low Priority (0):** System Resources (future consideration).
-* **Why:** If an app bundles "logo.svg", it *must* use that specific bundled version, ignoring potentially conflicting system resources.
+* **All packs are equal** - There is no priority hierarchy. Packs are uniquely identified by their FQN (`dist/pack`).
+* **No overrides** - Unlike font systems where bundled fonts override system fonts, resource packs do not override each other. Each pack is independent.
+* **Collisions are ambiguous** - When multiple packs claim the same short name or alias, the prefix becomes ambiguous and requires explicit resolution (FQN or `prefix_map`).
 
 ### 3.2 Prefix-Based Namespace Resolution
-* **Rule:** Resources can be addressed using multiple forms: `dist/pack:name` (qualified), `pack:name` (short), `alias:name` (convenience), or `name` (priority search).
+* **Rule:** Resources can be addressed using multiple forms: `dist/pack:name` (qualified), `pack:name` (short), `alias:name` (convenience), or `name` (default prefix lookup).
 * **Context:** Pack identity is derived from Python packaging infrastructure (distribution name + entry point name), not from pack code. The qualified name `dist/pack` is always globally unique.
-* **Directive:** The registry maintains a `prefix -> qualified_name` mapping. Qualified names (`dist/pack`) are always registered as prefixes. Short pack names and aliases are registered with collision detection. If no prefix is provided, search packs in priority order.
+* **Directive:** The registry maintains a `prefix -> qualified_name` mapping. Qualified names (`dist/pack`) are always registered as prefixes. Short pack names and aliases are registered with collision detection. If no prefix is provided, the name is rewritten using `default_prefix` (if set), otherwise an error is raised.
 
 ### 3.3 ResourceContent Wrapper
 * **Rule:** `get_resource()` always returns `ResourceContent`, never raw `bytes` or `str`.
@@ -66,8 +66,9 @@ You are building **JustMyResource**, a precise, lightweight, and extensible reso
 
 ### 3.4 Safety Valves
 * **Blocklists:** The `ResourceRegistry` must accept a blocklist (via init or env var) to silence specific packs. Accepts both short pack names and qualified names (`dist/pack`).
-* **Prefix Map:** The `ResourceRegistry` must accept a `prefix_map` (via init or env var) to override prefix mappings. This allows fine-grained control when collisions occur or when custom aliases are needed.
-* **Collision Warnings:** Prefix collisions emit `PrefixCollisionWarning` so users are aware of conflicts. Both packs remain accessible via qualified names.
+* **Prefix Map:** The `ResourceRegistry` must accept a `prefix_map` (via init or env var) to override prefix mappings. This allows fine-grained control when collisions occur or when custom aliases are needed. `prefix_map` can resolve ambiguous prefixes.
+* **Default Prefix:** The `ResourceRegistry` must accept a `default_prefix` (via init or env var) for bare-name lookups. Bare names like `"lightbulb"` are rewritten as `"{default_prefix}:lightbulb"`. If `default_prefix` points to an ambiguous prefix, it must be resolved via `prefix_map` or an error is raised.
+* **Collision Warnings:** Prefix collisions emit `PrefixCollisionWarning` so users are aware of conflicts. All colliding packs remain accessible via qualified names or `prefix_map`.
 * **Reason:** This is infrastructure. If a specific pack causes a crash or conflict in a production environment, the Ops team needs a way to disable it or remap prefixes without code changes.
 
 ---

@@ -23,16 +23,17 @@ class ResourceRegistry:
     """Registry for discovering and resolving resources from multiple sources.
 
     The registry discovers resources from:
-    1. Resource packs via EntryPoints (priority 100)
+    1. Resource packs via EntryPoints
 
     Resources are discovered lazily on first use and cached in memory.
-    Higher priority packs override lower priority packs.
+    All packs are equal; they are uniquely identified by their FQN (dist/pack).
     """
 
     def __init__(
         self,
         blocklist: set[str] | None = None,
         prefix_map: dict[str, str] | None = None,
+        default_prefix: str | None = None,
     ) -> None:
         """Initialize resource registry.
 
@@ -43,6 +44,10 @@ class ResourceRegistry:
             prefix_map: Optional mapping of alias -> qualified pack name (dist/pack format).
                 Applied with highest precedence after discovery. Can also be set via
                 RESOURCE_PREFIX_MAP environment variable (format: "alias1=dist1/pack1,alias2=dist2/pack2").
+            default_prefix: Optional default prefix for bare-name lookups (no colon).
+                Bare names like "lightbulb" will be resolved as "{default_prefix}:lightbulb".
+                Can be a FQN (acme-icons/lucide), short name (lucide), or alias.
+                Can also be set via RESOURCE_DEFAULT_PREFIX environment variable.
         """
         self._packs: dict[str, RegisteredPack] = {}  # qualified_name -> RegisteredPack
         self._prefixes: dict[str, str] = {}  # prefix -> qualified_name
@@ -52,6 +57,7 @@ class ResourceRegistry:
         self._discovered = False
         self._blocklist = self._parse_blocklist(blocklist)
         self._prefix_map = self._parse_prefix_map(prefix_map)
+        self._default_prefix = self._parse_default_prefix(default_prefix)
 
     def _parse_blocklist(self, blocklist: set[str] | None) -> set[str]:
         """Parse blocklist from constructor and environment variable.
@@ -94,6 +100,26 @@ class ResourceRegistry:
                     result[alias.strip()] = qualified_name.strip()
 
         return result
+
+    def _parse_default_prefix(self, default_prefix: str | None) -> str | None:
+        """Parse default_prefix from constructor and environment variable.
+
+        Args:
+            default_prefix: Default prefix from constructor.
+
+        Returns:
+            Default prefix string, or None if not set.
+        """
+        # Constructor takes precedence over env var
+        if default_prefix is not None:
+            return default_prefix
+
+        # Check environment variable
+        env_default = os.environ.get("RESOURCE_DEFAULT_PREFIX", "")
+        if env_default:
+            return env_default.strip()
+
+        return None
 
     def _get_entry_points(
         self,
@@ -165,7 +191,6 @@ class ResourceRegistry:
                 if not (
                     hasattr(provider, "get_resource")
                     and hasattr(provider, "list_resources")
-                    and hasattr(provider, "get_priority")
                 ):
                     continue
 
@@ -175,10 +200,10 @@ class ResourceRegistry:
                 continue
 
     def discover(self) -> None:
-        """Discover resource packs from all registered EntryPoints (high-priority first).
+        """Discover resource packs from all registered EntryPoints.
 
         Resource packs are discovered lazily—this method only runs once per registry instance.
-        Higher priority packs override lower priority packs.
+        Packs are processed in deterministic order (sorted by FQN) for stable behavior.
 
         Pack identity is derived from:
         - dist_name: Python distribution name (ep.dist.name)
@@ -191,8 +216,8 @@ class ResourceRegistry:
         if self._discovered:
             return
 
-        # Collect all packs with their priorities
-        packs: list[tuple[str, str, ResourcePack, int, list[str]]] = []
+        # Collect all packs
+        packs: list[tuple[str, str, ResourcePack, list[str]]] = []
 
         # Load External Packs via EntryPoints
         for dist_name, pack_name, pack, aliases in self._get_entry_points():
@@ -202,17 +227,13 @@ class ResourceRegistry:
             if pack_name in self._blocklist or qualified_name in self._blocklist:
                 continue  # Skip blocked packs
 
-            try:
-                priority = pack.get_priority()
-                packs.append((dist_name, pack_name, pack, priority, aliases))
-            except Exception:
-                continue
+            packs.append((dist_name, pack_name, pack, aliases))
 
-        # Sort packs by priority (highest first), then by qualified name for stability
-        packs.sort(key=lambda x: (x[3], x[1]), reverse=True)
+        # Sort packs by qualified name for deterministic ordering
+        packs.sort(key=lambda x: f"{x[0]}/{x[1]}")
 
-        # Process packs in priority order
-        for dist_name, pack_name, pack, priority, aliases in packs:
+        # Process packs
+        for dist_name, pack_name, pack, aliases in packs:
             qualified_name = f"{dist_name}/{pack_name}"
 
             # Create RegisteredPack
@@ -233,7 +254,6 @@ class ResourceRegistry:
             self._register_prefix(
                 pack_name.lower(),
                 qualified_name,
-                priority,
                 f"pack name '{pack_name}'",
             )
 
@@ -242,7 +262,6 @@ class ResourceRegistry:
                 self._register_prefix(
                     alias.lower(),
                     qualified_name,
-                    priority,
                     f"alias '{alias}'",
                 )
 
@@ -255,70 +274,40 @@ class ResourceRegistry:
         self._discovered = True
 
     def _register_prefix(
-        self, prefix: str, qualified_name: str, priority: int, description: str
+        self, prefix: str, qualified_name: str, description: str
     ) -> None:
         """Register a prefix with collision detection and warning.
+
+        All collisions are treated as ambiguous. No winner is picked.
+        The prefix becomes ambiguous and cannot be used without explicit
+        resolution via FQN or prefix_map.
 
         Args:
             prefix: The prefix to register (already lowercased).
             qualified_name: The qualified pack name claiming this prefix.
-            priority: Priority of the pack claiming this prefix.
             description: Human-readable description for warning messages.
         """
         if prefix not in self._prefixes:
             # No collision, register it
             self._prefixes[prefix] = qualified_name
         else:
-            # Collision detected
+            # Collision detected - mark as ambiguous
             existing_qualified = self._prefixes[prefix]
-            existing_pack = self._packs.get(existing_qualified)
 
-            # Determine winner: higher priority wins, or first registered at equal priority
-            if existing_pack:
-                existing_priority = existing_pack.pack.get_priority()
-                if priority > existing_priority:
-                    # New pack wins, update mapping
-                    # Not truly ambiguous (clear winner), so don't track in collisions
-                    self._prefixes[prefix] = qualified_name
-                    warnings.warn(
-                        f"Prefix '{prefix}' collision: {description} from '{qualified_name}' "
-                        f"(priority {priority}) overrides '{existing_qualified}' "
-                        f"(priority {existing_priority}). Use qualified name "
-                        f"'{existing_qualified}:resource' to access the overridden pack.",
-                        PrefixCollisionWarning,
-                        stacklevel=3,
-                    )
-                    # Remove from collisions if it was there (no longer ambiguous)
-                    if prefix in self._collisions:
-                        self._collisions[prefix].remove(existing_qualified)
-                        if not self._collisions[prefix]:
-                            del self._collisions[prefix]
-                elif priority == existing_priority:
-                    # Equal priority, truly ambiguous - track in collisions
-                    # First registered wins (already in _prefixes), but both are ambiguous
-                    if prefix not in self._collisions:
-                        self._collisions[prefix] = [existing_qualified]
-                    if qualified_name not in self._collisions[prefix]:
-                        self._collisions[prefix].append(qualified_name)
-                    warnings.warn(
-                        f"Prefix '{prefix}' collision: {description} from '{qualified_name}' "
-                        f"conflicts with '{existing_qualified}' (both priority {priority}). "
-                        f"'{existing_qualified}' wins (registered first). Use qualified name "
-                        f"'{qualified_name}:resource' to access the other pack.",
-                        PrefixCollisionWarning,
-                        stacklevel=3,
-                    )
-                else:
-                    # Existing wins (lower priority), not ambiguous
-                    # Don't track in collisions - there's a clear winner
-                    warnings.warn(
-                        f"Prefix '{prefix}' collision: {description} from '{qualified_name}' "
-                        f"(priority {priority}) conflicts with '{existing_qualified}' "
-                        f"(priority {existing_priority}). '{existing_qualified}' wins. "
-                        f"Use qualified name '{qualified_name}:resource' to access the other pack.",
-                        PrefixCollisionWarning,
-                        stacklevel=3,
-                    )
+            # Track both qualified names in collisions
+            if prefix not in self._collisions:
+                self._collisions[prefix] = [existing_qualified]
+            if qualified_name not in self._collisions[prefix]:
+                self._collisions[prefix].append(qualified_name)
+
+            warnings.warn(
+                f"Prefix '{prefix}' collision: {description} from '{qualified_name}' "
+                f"conflicts with '{existing_qualified}'. The prefix is ambiguous. "
+                f"Use qualified names ('{existing_qualified}:resource' or "
+                f"'{qualified_name}:resource') or configure prefix_map to resolve.",
+                PrefixCollisionWarning,
+                stacklevel=3,
+            )
 
     def _resolve_name(self, name: str) -> tuple[str, str]:
         """Resolve a resource name to (qualified_pack_name, resource_name).
@@ -327,7 +316,7 @@ class ResourceRegistry:
         - "dist/pack:resource" - fully qualified (always unique)
         - "pack:resource" - short pack name (works if unique)
         - "alias:resource" - alias from get_prefixes() (works if unique)
-        - "resource" - priority-order search (no prefix)
+        - "resource" - rewritten to "{default_prefix}:resource" if default_prefix is set
 
         Args:
             name: Resource name, optionally with prefix.
@@ -336,8 +325,8 @@ class ResourceRegistry:
             Tuple of (qualified_pack_name, resource_name).
 
         Raises:
-            ValueError: If prefix is specified but pack is not found, or if collision
-                prevents unambiguous resolution.
+            ValueError: If prefix is specified but pack is not found, if collision
+                prevents unambiguous resolution, or if bare name is used without default_prefix.
         """
         if ":" in name:
             # Split on last ":" to handle qualified names with colons in dist/pack
@@ -387,25 +376,18 @@ class ResourceRegistry:
             qualified_name = self._prefixes[prefix_lower]
             return (qualified_name, resource_name)
         else:
-            # No prefix: search packs in priority order
-            # Sort packs by priority (highest first)
-            sorted_packs = sorted(
-                self._packs.items(),
-                key=lambda x: x[1].pack.get_priority(),
-                reverse=True,
-            )
+            # No prefix: rewrite using default_prefix
+            if self._default_prefix is None:
+                raise ValueError(
+                    "No default prefix configured. Use a prefixed name "
+                    "(e.g., 'pack:resource' or 'dist/pack:resource') or set "
+                    "default_prefix on the registry (or RESOURCE_DEFAULT_PREFIX env var)."
+                )
 
-            # Try each pack in priority order
-            for qualified_name, registered_pack in sorted_packs:
-                try:
-                    # Check if resource exists by attempting to get it
-                    # In a future optimization, we could cache resource lists
-                    registered_pack.pack.get_resource(name)
-                    return (qualified_name, name)
-                except ValueError:
-                    continue
-
-            raise ValueError(f"Resource not found: {name}")
+            # Rewrite bare name to use default_prefix
+            rewritten = f"{self._default_prefix}:{name}"
+            # Recursively resolve (will handle FQN, short name, alias, or error if ambiguous)
+            return self._resolve_name(rewritten)
 
     def get_resource(self, name: str) -> ResourceContent:
         """Get resource content by name.
@@ -414,7 +396,7 @@ class ResourceRegistry:
         - "dist/pack:resource" - fully qualified (always unique)
         - "pack:resource" - short pack name (works if unique)
         - "alias:resource" - alias from get_prefixes() (works if unique)
-        - "resource" - priority-order search (no prefix)
+        - "resource" - rewritten to "{default_prefix}:resource" if default_prefix is set
 
         Args:
             name: Resource name, optionally with prefix.
@@ -423,7 +405,8 @@ class ResourceRegistry:
             ResourceContent object containing the resource data and metadata.
 
         Raises:
-            ValueError: If the resource cannot be found or prefix is ambiguous.
+            ValueError: If the resource cannot be found, prefix is ambiguous, or
+                bare name is used without default_prefix.
         """
         self.discover()
 

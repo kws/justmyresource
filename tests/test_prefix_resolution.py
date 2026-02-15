@@ -79,14 +79,12 @@ def test_prefix_collision_warning():
         resources={"icon1": create_test_resource_content(b"data1")},
         dist_name="acme-icons",
         pack_name="lucide",
-        priority=100,
     )
 
     pack2 = MockResourcePack(
         resources={"icon2": create_test_resource_content(b"data2")},
         dist_name="cool-icons",
         pack_name="lucide",  # Same pack name!
-        priority=100,
     )
 
     def factory1():
@@ -112,45 +110,6 @@ def test_prefix_collision_warning():
             assert any(
                 issubclass(warning.category, PrefixCollisionWarning) for warning in w
             )
-
-
-def test_higher_priority_wins_collision():
-    """Test that higher priority pack wins in collision."""
-    pack1 = MockResourcePack(
-        resources={"icon1": create_test_resource_content(b"data1")},
-        dist_name="acme-icons",
-        pack_name="lucide",
-        priority=100,
-    )
-
-    pack2 = MockResourcePack(
-        resources={"icon2": create_test_resource_content(b"data2")},
-        dist_name="cool-icons",
-        pack_name="lucide",
-        priority=50,  # Lower priority
-    )
-
-    def factory1():
-        return pack1
-
-    def factory2():
-        return pack2
-
-    with patch(
-        "justmyresource.core.ResourceRegistry._get_entry_points",
-        return_value=[
-            ("acme-icons", "lucide", pack1, []),
-            ("cool-icons", "lucide", pack2, []),
-        ],
-    ):
-        registry = ResourceRegistry()
-        # Higher priority pack should win
-        content = registry.get_resource("lucide:icon1")
-        assert content.data == b"data1"
-
-        # Lower priority pack should still be accessible via qualified name
-        content = registry.get_resource("cool-icons/lucide:icon2")
-        assert content.data == b"data2"
 
 
 def test_prefix_map_overrides():
@@ -220,14 +179,14 @@ def test_blocklist_accepts_qualified_names():
     def factory1():
         return pack1
 
-        with patch(
-            "justmyresource.core.ResourceRegistry._get_entry_points",
-            return_value=[("acme-icons", "lucide", pack1, [])],
-        ):
-            # Block by qualified name
-            registry = ResourceRegistry(blocklist={"acme-icons/lucide"})
-            with pytest.raises(ValueError, match="Unknown resource pack prefix"):
-                registry.get_resource("lucide:icon1")
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        # Block by qualified name
+        registry = ResourceRegistry(blocklist={"acme-icons/lucide"})
+        with pytest.raises(ValueError, match="Unknown resource pack prefix"):
+            registry.get_resource("lucide:icon1")
 
 
 def test_blocklist_accepts_short_names():
@@ -241,14 +200,14 @@ def test_blocklist_accepts_short_names():
     def factory1():
         return pack1
 
-        with patch(
-            "justmyresource.core.ResourceRegistry._get_entry_points",
-            return_value=[("acme-icons", "lucide", pack1, [])],
-        ):
-            # Block by short name
-            registry = ResourceRegistry(blocklist={"lucide"})
-            with pytest.raises(ValueError, match="Unknown resource pack prefix"):
-                registry.get_resource("lucide:icon1")
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        # Block by short name
+        registry = ResourceRegistry(blocklist={"lucide"})
+        with pytest.raises(ValueError, match="Unknown resource pack prefix"):
+            registry.get_resource("lucide:icon1")
 
 
 def test_get_prefix_collisions():
@@ -257,14 +216,12 @@ def test_get_prefix_collisions():
         resources={"icon1": create_test_resource_content(b"data1")},
         dist_name="acme-icons",
         pack_name="lucide",
-        priority=100,
     )
 
     pack2 = MockResourcePack(
         resources={"icon2": create_test_resource_content(b"data2")},
         dist_name="cool-icons",
         pack_name="lucide",
-        priority=100,
     )
 
     def factory1():
@@ -320,14 +277,12 @@ def test_ambiguous_prefix_error():
         resources={"icon1": create_test_resource_content(b"data1")},
         dist_name="acme-icons",
         pack_name="lucide",
-        priority=100,
     )
 
     pack2 = MockResourcePack(
         resources={"icon2": create_test_resource_content(b"data2")},
         dist_name="cool-icons",
         pack_name="lucide",
-        priority=100,
     )
 
     def factory1():
@@ -347,41 +302,6 @@ def test_ambiguous_prefix_error():
         # Should raise error with helpful message
         with pytest.raises(ValueError, match="ambiguous"):
             registry.get_resource("lucide:icon1")
-
-
-def test_priority_order_search():
-    """Test that resources without prefix search by priority order."""
-    pack1 = MockResourcePack(
-        resources={"common": create_test_resource_content(b"data1")},
-        dist_name="acme-icons",
-        pack_name="pack1",
-        priority=100,
-    )
-
-    pack2 = MockResourcePack(
-        resources={"common": create_test_resource_content(b"data2")},
-        dist_name="cool-icons",
-        pack_name="pack2",
-        priority=50,
-    )
-
-    def factory1():
-        return pack1
-
-    def factory2():
-        return pack2
-
-    with patch(
-        "justmyresource.core.ResourceRegistry._get_entry_points",
-        return_value=[
-            ("acme-icons", "pack1", pack1, []),
-            ("cool-icons", "pack2", pack2, []),
-        ],
-    ):
-        registry = ResourceRegistry()
-        # Should find from higher priority pack
-        content = registry.get_resource("common")
-        assert content.data == b"data1"
 
 
 def test_list_packs_returns_qualified_names():
@@ -446,3 +366,130 @@ def test_list_resources_with_short_pack_name():
         assert len(resources) == 1
         assert resources[0].name == "icon1"
         assert resources[0].pack == "acme-icons/lucide"
+
+
+def test_bare_name_with_default_prefix():
+    """Test that bare names work when default_prefix is set (UC4)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        registry = ResourceRegistry(default_prefix="lucide")
+        content = registry.get_resource("lightbulb")
+        assert content.data == b"data1"
+
+
+def test_bare_name_without_default_prefix():
+    """Test that bare names raise error when default_prefix is not set (UC5)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        registry = ResourceRegistry()  # No default_prefix
+        with pytest.raises(ValueError, match="No default prefix configured"):
+            registry.get_resource("lightbulb")
+
+
+def test_default_prefix_via_env_var():
+    """Test that default_prefix can be set via environment variable (UC6)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    with (
+        patch(
+            "justmyresource.core.ResourceRegistry._get_entry_points",
+            return_value=[("acme-icons", "lucide", pack1, [])],
+        ),
+        patch.dict("os.environ", {"RESOURCE_DEFAULT_PREFIX": "lucide"}),
+    ):
+        registry = ResourceRegistry()  # No explicit default_prefix
+        content = registry.get_resource("lightbulb")
+        assert content.data == b"data1"
+
+
+def test_default_prefix_using_fqn():
+    """Test that default_prefix can be a fully qualified name (UC7)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("acme-icons", "lucide", pack1, [])],
+    ):
+        registry = ResourceRegistry(default_prefix="acme-icons/lucide")
+        content = registry.get_resource("lightbulb")
+        assert content.data == b"data1"
+
+
+def test_default_prefix_with_ambiguous_prefix_resolved():
+    """Test default_prefix pointing to ambiguous prefix resolved by prefix_map (UC11)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    pack2 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data2")},
+        dist_name="cool-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[
+            ("acme-icons", "lucide", pack1, []),
+            ("cool-icons", "lucide", pack2, []),
+        ],
+    ):
+        registry = ResourceRegistry(
+            default_prefix="lucide",
+            prefix_map={"lucide": "acme-icons/lucide"},
+        )
+        content = registry.get_resource("lightbulb")
+        assert content.data == b"data1"  # Should resolve to acme-icons/lucide
+
+
+def test_default_prefix_with_ambiguous_prefix_not_resolved():
+    """Test default_prefix pointing to ambiguous prefix NOT resolved (UC12)."""
+    pack1 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data1")},
+        dist_name="acme-icons",
+        pack_name="lucide",
+    )
+
+    pack2 = MockResourcePack(
+        resources={"lightbulb": create_test_resource_content(b"data2")},
+        dist_name="cool-icons",
+        pack_name="lucide",
+    )
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[
+            ("acme-icons", "lucide", pack1, []),
+            ("cool-icons", "lucide", pack2, []),
+        ],
+    ):
+        registry = ResourceRegistry(default_prefix="lucide")  # No prefix_map
+        # Should raise error because "lucide" is ambiguous
+        with pytest.raises(ValueError, match="ambiguous"):
+            registry.get_resource("lightbulb")

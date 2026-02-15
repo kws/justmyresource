@@ -11,10 +11,10 @@ class PrefixCollisionWarning(UserWarning):
     """Warning emitted when two resource packs claim the same prefix.
 
     This warning is raised during pack discovery when multiple packs
-    attempt to register the same prefix. The pack with higher priority
-    (or registered first at equal priority) wins, but the warning
-    alerts users to the collision so they can use qualified names
-    (dist/pack:resource) or configure prefix_map if needed.
+    attempt to register the same prefix. The prefix becomes ambiguous
+    and cannot be used without explicit resolution. Users should use
+    qualified names (dist/pack:resource) or configure prefix_map to
+    resolve the ambiguity.
     """
 
     pass
@@ -49,18 +49,6 @@ class ResourcePack(Protocol):
 
         Yields:
             Resource name/identifier strings.
-        """
-        ...
-
-    def get_priority(self) -> int:
-        """Return priority for this pack (higher = processed first, overrides lower priority).
-
-        Standard priorities:
-        - Resource Packs: 100
-        - System Resources: 0 (future consideration)
-
-        Returns:
-            Integer priority value (higher = higher priority).
         """
         ...
 
