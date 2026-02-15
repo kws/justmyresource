@@ -493,3 +493,33 @@ def test_default_prefix_with_ambiguous_prefix_not_resolved():
         # Should raise error because "lucide" is ambiguous
         with pytest.raises(ValueError, match="ambiguous"):
             registry.get_resource("lightbulb")
+
+
+def test_list_resources_uses_default_content_type():
+    """Test that list_resources() uses default_content_type from pack."""
+
+    class PackWithDefaultContentType:
+        default_content_type = "image/svg+xml"
+
+        def get_resource(self, name: str):
+            return create_test_resource_content(b"data", content_type="image/svg+xml")
+
+        def list_resources(self):
+            yield "icon1"
+
+        def get_prefixes(self):
+            return []
+
+    pack = PackWithDefaultContentType()
+
+    with patch(
+        "justmyresource.core.ResourceRegistry._get_entry_points",
+        return_value=[("test-dist", "test-pack", pack, [])],
+    ):
+        registry = ResourceRegistry()
+        resources = list(registry.list_resources())
+
+        assert len(resources) == 1
+        assert resources[0].content_type == "image/svg+xml"
+        assert resources[0].name == "icon1"
+        assert resources[0].pack == "test-dist/test-pack"

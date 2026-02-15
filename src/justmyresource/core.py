@@ -441,15 +441,11 @@ class ResourceRegistry:
                 return
 
             registered_pack = self._packs[qualified_name]
+            # Get content type hint from pack if available (duck-typed, optional)
+            content_type: str | None = getattr(
+                registered_pack.pack, 'default_content_type', None
+            )
             for resource_name in registered_pack.pack.list_resources():
-                # Try to get content type from pack if possible
-                content_type: str | None = None
-                try:
-                    resource_content = registered_pack.pack.get_resource(resource_name)
-                    content_type = resource_content.content_type
-                except Exception:
-                    pass
-
                 yield ResourceInfo(
                     name=resource_name,
                     pack=qualified_name,
@@ -458,17 +454,11 @@ class ResourceRegistry:
         else:
             # List from all packs
             for qualified_name, registered_pack in self._packs.items():
+                # Get content type hint from pack if available (duck-typed, optional)
+                content_type: str | None = getattr(
+                    registered_pack.pack, 'default_content_type', None
+                )
                 for resource_name in registered_pack.pack.list_resources():
-                    # Try to get content type from pack if possible
-                    content_type: str | None = None
-                    try:
-                        resource_content = registered_pack.pack.get_resource(
-                            resource_name
-                        )
-                        content_type = resource_content.content_type
-                    except Exception:
-                        pass
-
                     yield ResourceInfo(
                         name=resource_name,
                         pack=qualified_name,
