@@ -7,8 +7,28 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 
+class PrefixCollisionWarning(UserWarning):
+    """Warning emitted when two resource packs claim the same prefix.
+
+    This warning is raised during pack discovery when multiple packs
+    attempt to register the same prefix. The pack with higher priority
+    (or registered first at equal priority) wins, but the warning
+    alerts users to the collision so they can use qualified names
+    (dist/pack:resource) or configure prefix_map if needed.
+    """
+
+    pass
+
+
 class ResourcePack(Protocol):
-    """Protocol that all resource sources must implement."""
+    """Protocol that all resource sources must implement.
+
+    Pack identity is derived from Python packaging infrastructure:
+    - Distribution name (from pyproject.toml [project] name)
+    - Entry point name (from pyproject.toml entry-points key)
+
+    The qualified pack name is "dist_name/pack_name" and is always unique.
+    """
 
     def get_resource(self, name: str) -> ResourceContent:
         """Get resource content for a name.
@@ -44,24 +64,18 @@ class ResourcePack(Protocol):
         """
         ...
 
-    def get_name(self) -> str:
-        """Return canonical name for this pack (used in blocklist).
-
-        Must be unique and stable.
-
-        Returns:
-            String identifier for this resource pack.
-        """
-        ...
-
     def get_prefixes(self) -> list[str]:
-        """Return list of prefixes that map to this pack.
+        """Return list of optional alias prefixes that map to this pack.
 
-        Prefixes are used for namespace disambiguation in `pack:name` format.
-        For example, a pack with prefix "lucide" can be accessed as "lucide:lightbulb".
+        Prefixes are convenience aliases for namespace disambiguation.
+        For example, a pack with prefix "luc" can be accessed as "luc:lightbulb".
+
+        Note: The pack's entry point name and qualified name (dist/pack)
+        are automatically registered as prefixes. This method only provides
+        additional short aliases.
 
         Returns:
-            List of prefix strings (e.g., ["lucide", "luc"]).
+            List of prefix strings (e.g., ["luc", "mi"]).
         """
         ...
 
@@ -98,6 +112,35 @@ class ResourceContent:
 
 
 @dataclass(frozen=True, slots=True)
+class RegisteredPack:
+    """Registered resource pack with resolved identity from packaging infrastructure.
+
+    Pack identity is derived from:
+    - dist_name: Python distribution name (from ep.dist.name, globally unique on PyPI)
+    - pack_name: Entry point name (from ep.name, unique within a distribution)
+
+    The qualified_name "dist_name/pack_name" is always globally unique.
+    """
+
+    dist_name: str
+    """Distribution name (from pyproject.toml [project] name)."""
+
+    pack_name: str
+    """Entry point name (from pyproject.toml entry-points key)."""
+
+    pack: ResourcePack
+    """The ResourcePack instance."""
+
+    aliases: tuple[str, ...]
+    """Optional alias prefixes from get_prefixes()."""
+
+    @property
+    def qualified_name(self) -> str:
+        """Return qualified pack name in 'dist_name/pack_name' format."""
+        return f"{self.dist_name}/{self.pack_name}"
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceInfo:
     """Lightweight metadata about a discovered resource (no content loaded)."""
 
@@ -105,7 +148,7 @@ class ResourceInfo:
     """Resource name/identifier."""
 
     pack: str
-    """Name of the resource pack this resource belongs to."""
+    """Qualified name of the resource pack this resource belongs to (dist/pack format)."""
 
     content_type: str | None = None
     """MIME type if known, None if unknown."""
