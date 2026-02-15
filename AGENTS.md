@@ -51,9 +51,9 @@ You are building **JustMyResource**, a precise, lightweight, and extensible reso
 * **Why:** If an app bundles "logo.svg", it *must* use that specific bundled version, ignoring potentially conflicting system resources.
 
 ### 3.2 Prefix-Based Namespace Resolution
-* **Rule:** Resources can be addressed as `pack:name` (e.g., `lucide:lightbulb`).
-* **Context:** Multiple packs may provide resources with the same name.
-* **Directive:** The registry maintains a `prefix -> pack_name` mapping. If no prefix is provided, search packs in priority order.
+* **Rule:** Resources can be addressed using multiple forms: `dist/pack:name` (qualified), `pack:name` (short), `alias:name` (convenience), or `name` (priority search).
+* **Context:** Pack identity is derived from Python packaging infrastructure (distribution name + entry point name), not from pack code. The qualified name `dist/pack` is always globally unique.
+* **Directive:** The registry maintains a `prefix -> qualified_name` mapping. Qualified names (`dist/pack`) are always registered as prefixes. Short pack names and aliases are registered with collision detection. If no prefix is provided, search packs in priority order.
 
 ### 3.3 ResourceContent Wrapper
 * **Rule:** `get_resource()` always returns `ResourceContent`, never raw `bytes` or `str`.
@@ -65,8 +65,10 @@ You are building **JustMyResource**, a precise, lightweight, and extensible reso
     - `metadata: dict[str, Any] | None` (optional pack-specific details)
 
 ### 3.4 Safety Valves
-* **Blocklists:** The `ResourceRegistry` must accept a blocklist (via init or env var) to silence specific packs.
-* **Reason:** This is infrastructure. If a specific pack causes a crash or conflict in a production environment, the Ops team needs a way to disable it without code changes.
+* **Blocklists:** The `ResourceRegistry` must accept a blocklist (via init or env var) to silence specific packs. Accepts both short pack names and qualified names (`dist/pack`).
+* **Prefix Map:** The `ResourceRegistry` must accept a `prefix_map` (via init or env var) to override prefix mappings. This allows fine-grained control when collisions occur or when custom aliases are needed.
+* **Collision Warnings:** Prefix collisions emit `PrefixCollisionWarning` so users are aware of conflicts. Both packs remain accessible via qualified names.
+* **Reason:** This is infrastructure. If a specific pack causes a crash or conflict in a production environment, the Ops team needs a way to disable it or remap prefixes without code changes.
 
 ---
 

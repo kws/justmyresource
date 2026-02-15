@@ -78,7 +78,14 @@ from typing import Protocol
 from collections.abc import Iterator
 
 class ResourcePack(Protocol):
-    """Protocol that all resource sources must implement."""
+    """Protocol that all resource sources must implement.
+
+    Pack identity is derived from Python packaging infrastructure:
+    - Distribution name (from pyproject.toml [project] name)
+    - Entry point name (from pyproject.toml entry-points key)
+
+    The qualified pack name is "dist_name/pack_name" and is always unique.
+    """
 
     def get_resource(self, name: str) -> ResourceContent:
         """Get resource content for a name.
@@ -114,21 +121,18 @@ class ResourcePack(Protocol):
         """
         ...
     
-    def get_name(self) -> str:
-        """Return canonical name for this pack (used in blocklist).
-        
-        Returns:
-            String identifier for this resource pack.
-        """
-        ...
-    
     def get_prefixes(self) -> list[str]:
-        """Return list of prefixes that map to this pack.
+        """Return list of optional alias prefixes that map to this pack.
         
-        Prefixes are used for namespace disambiguation in `pack:name` format.
+        Prefixes are convenience aliases for namespace disambiguation.
+        For example, a pack with prefix "luc" can be accessed as "luc:lightbulb".
+        
+        Note: The pack's entry point name and qualified name (dist/pack)
+        are automatically registered as prefixes. This method only provides
+        additional short aliases.
         
         Returns:
-            List of prefix strings (e.g., ["lucide", "luc"]).
+            List of prefix strings (e.g., ["luc", "mi"]).
         """
         ...
 ```
@@ -232,27 +236,121 @@ class ResourceRegistry:
         ...
     
     def get_resource(self, name: str) -> ResourceContent:
-        """Get resource by name (supports 'pack:name' format)."""
+        """Get resource by name.
+        
+        Supports multiple resolution forms:
+        - "dist/pack:resource" - fully qualified (always unique)
+        - "pack:resource" - short pack name (works if unique)
+        - "alias:resource" - alias from get_prefixes() (works if unique)
+        - "resource" - priority-order search (no prefix)
+        """
+        ...
+    
+    def get_prefix_map(self) -> dict[str, str]:
+        """Get current prefix to qualified pack name mapping."""
+        ...
+    
+    def get_prefix_collisions(self) -> dict[str, list[str]]:
+        """Get prefixes that are claimed by multiple packs."""
         ...
 ```
 
 ## 5. Prefix-Based Resolution
 
-Resources can be referenced using a `pack:name` format for namespace disambiguation:
+Resources can be referenced using multiple resolution forms, from most specific to least specific:
 
-- `lucide:lightbulb` - Lucide icon named "lightbulb"
-- `feather:home` - Feather icon named "home"
-- `material:settings` - Material Design icon named "settings"
-- `samples:logo` - Sample resource named "logo" (could be SVG or PNG)
+### 5.1 Resolution Forms
 
-If no prefix is provided, the registry searches packs in priority order (highest priority first).
+1. **Fully Qualified** (`dist/pack:resource`) - Always unique, guaranteed by PyPI
+   - `acme-icons/lucide:lightbulb` - Explicit distribution and pack
+   - `cool-icons/feather:home` - Different distribution, same pack name
 
-### 5.1 Resolution Algorithm
+2. **Short Pack Name** (`pack:resource`) - Works if pack name is unique
+   - `lucide:lightbulb` - Short form when only one "lucide" pack exists
+   - `feather:home` - Short form when only one "feather" pack exists
 
-1. If name contains `:`, split into `(prefix, resource_name)`
-2. Look up prefix in `_prefixes` dict to get pack name
-3. Call `pack.get_resource(resource_name)`
-4. If no prefix, iterate packs by priority until resource is found
+3. **Alias** (`alias:resource`) - Convenience aliases from `get_prefixes()`
+   - `luc:lightbulb` - Short alias for "lucide"
+   - `mi:settings` - Short alias for "material-icons"
+
+4. **Priority Search** (`resource`) - No prefix, searches by priority
+   - `lightbulb` - Searches all packs in priority order until found
+
+### 5.2 Resolution Algorithm
+
+1. If name contains `:`, split on last `:` to get `(prefix_part, resource_name)`
+2. If `prefix_part` contains `/`, treat as fully qualified (`dist/pack` format)
+   - Look up qualified name directly in `_packs`
+3. If `prefix_part` has no `/`, look up in prefix map:
+   - Check user `prefix_map` overrides (highest precedence)
+   - Check aliases from `get_prefixes()`
+   - Check short pack names (entry point names)
+   - If ambiguous (collision), raise error with qualified alternatives
+4. If no `:` at all, iterate packs by priority until resource is found
+
+### 5.3 Pack Identity and Qualified Names
+
+Pack identity is derived from Python packaging infrastructure, not from pack code:
+
+- **Distribution Name**: From `pyproject.toml` `[project] name` (globally unique on PyPI)
+- **Pack Name**: From entry point key in `pyproject.toml` (unique within a distribution)
+- **Qualified Name**: `dist_name/pack_name` format (always globally unique)
+
+Example:
+```toml
+# In package "acme-icons" (PyPI distribution name)
+[project.entry-points."justmyresource.packs"]
+"lucide" = "acme_icons.lucide:get_provider"    # Qualified: acme-icons/lucide
+"feather" = "acme_icons.feather:get_provider"  # Qualified: acme-icons/feather
+```
+
+The qualified name `acme-icons/lucide` is always registered as a prefix, ensuring the pack is always accessible even if the short name `lucide` collides with another pack.
+
+### 5.4 Prefix Collision Detection
+
+When multiple packs claim the same prefix (short name or alias), the registry:
+
+1. **Emits `PrefixCollisionWarning`** - Alerts users to the collision
+2. **Resolves by Priority** - Higher priority pack wins
+3. **Tracks Collisions** - Available via `get_prefix_collisions()`
+4. **Preserves Access** - Both packs remain accessible via qualified names
+
+Example collision scenario:
+```python
+# Two different distributions both register "lucide" pack
+# acme-icons/lucide (priority 100)
+# cool-icons/lucide (priority 100)
+
+registry = ResourceRegistry()
+# Warning: Prefix 'lucide' collision: pack name 'lucide' from 'cool-icons/lucide' 
+# conflicts with 'acme-icons/lucide' (both priority 100). 
+# 'acme-icons/lucide' wins (registered first). 
+# Use qualified name 'cool-icons/lucide:resource' to access the other pack.
+
+# Both are accessible:
+content1 = registry.get_resource("acme-icons/lucide:lightbulb")  # Explicit
+content2 = registry.get_resource("cool-icons/lucide:lightbulb")  # Explicit
+content1 = registry.get_resource("lucide:lightbulb")  # Uses acme-icons/lucide (first registered)
+```
+
+### 5.5 Prefix Map Overrides
+
+Users can override prefix mappings via `prefix_map` parameter or environment variable:
+
+```python
+# Via constructor
+registry = ResourceRegistry(
+    prefix_map={
+        "icons": "acme-icons/lucide",  # Map "icons" to specific pack
+        "mi": "material-icons/core",   # Custom alias
+    }
+)
+
+# Via environment variable
+# RESOURCE_PREFIX_MAP="icons=acme-icons/lucide,mi=material-icons/core" python app.py
+```
+
+Prefix map overrides have **highest precedence** and are applied after discovery, allowing fine-grained control over prefix resolution.
 
 ## 6. Resource Registry Pattern
 
@@ -261,25 +359,40 @@ The resource registry provides a unified interface for resource lookup and resol
 ### 6.1 Registry API
 
 ```python
-registry = ResourceRegistry()
+registry = ResourceRegistry(
+    blocklist={"broken-pack"},  # Block specific packs
+    prefix_map={"icons": "acme-icons/lucide"},  # Override prefix mappings
+)
 
-# Get resource with prefix
+# Get resource with fully qualified name (always unique)
+content = registry.get_resource("acme-icons/lucide:lightbulb")
+
+# Get resource with short pack name (works if unique)
 content = registry.get_resource("lucide:lightbulb")
+
+# Get resource with alias
+content = registry.get_resource("luc:lightbulb")
 
 # Get resource without prefix (searches by priority)
 content = registry.get_resource("lightbulb")
 
 # List all resources
 for resource_info in registry.list_resources():
-    print(f"{resource_info.pack}:{resource_info.name}")
+    print(f"{resource_info.pack}:{resource_info.name}")  # pack is qualified name
 
-# List resources from specific pack
+# List resources from specific pack (qualified or short name)
+for resource_info in registry.list_resources(pack="acme-icons/lucide"):
+    print(resource_info.name)
 for resource_info in registry.list_resources(pack="lucide"):
     print(resource_info.name)
 
-# List registered packs
-for pack_name in registry.list_packs():
-    print(pack_name)
+# List registered packs (returns qualified names)
+for qualified_name in registry.list_packs():
+    print(qualified_name)  # e.g., "acme-icons/lucide"
+
+# Inspect prefix mappings
+prefix_map = registry.get_prefix_map()  # prefix -> qualified_name
+collisions = registry.get_prefix_collisions()  # prefix -> [qualified_names]
 ```
 
 ### 6.2 Factory Functions
@@ -410,11 +523,8 @@ class FileBasedResourcePack:
     def get_priority(self) -> int:
         return 100
     
-    def get_name(self) -> str:
-        return self.package_name
-    
     def get_prefixes(self) -> list[str]:
-        return [self.prefix]
+        return [self.prefix]  # Optional aliases (pack name is auto-registered)
 ```
 
 ## 9. Best Practices
@@ -500,7 +610,25 @@ Add resource search capabilities:
 - **Category Search**: Search resources by category
 - **Metadata Search**: Search resources by metadata fields
 
-## 12. Comparison with Existing Solutions
+## 12. Outstanding Questions
+
+### 12.1 Manual Pack Registration
+
+**Question**: Should the registry support manual registration of packs via a `register_pack()` method, in addition to entry point discovery?
+
+**Current Status**: Not implemented. Only entry point discovered packs are supported.
+
+**Considerations**:
+- Manual registration would allow programmatic addition of packs without requiring `pyproject.toml` entry points
+- Would need to handle pack identity: manually registered packs don't have a distribution name from `ep.dist.name`
+- Options for identity:
+  - Require caller to provide `dist_name` and `pack_name` explicitly
+  - Use a synthetic distribution name like `"__manual__"` or `"__programmatic__"`
+  - Use a different identity scheme for manually registered packs
+
+**Decision**: Deferred for now. Entry point discovery provides sufficient functionality for the current use cases. Manual registration can be added later if needed, with appropriate identity handling.
+
+## 13. Comparison with Existing Solutions
 
 | Feature | JustMyResource | Iconify | react-icons | FreeDesktop |
 |---------|----------------|---------|-------------|-------------|

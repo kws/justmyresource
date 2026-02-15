@@ -25,8 +25,14 @@ from justmyresource import ResourceRegistry, get_default_registry
 # Get default registry
 registry = get_default_registry()
 
-# Get resource with prefix
+# Get resource with fully qualified name (always unique)
+content = registry.get_resource("acme-icons/lucide:lightbulb")
+
+# Get resource with short pack name (works if unique)
 content = registry.get_resource("lucide:lightbulb")
+
+# Get resource with alias
+content = registry.get_resource("luc:lightbulb")
 
 # Check content type and use accordingly
 if content.content_type == "image/svg+xml":
@@ -46,7 +52,10 @@ from justmyresource import ResourceRegistry
 
 registry = ResourceRegistry()
 
-# Get resource with prefix (explicit pack)
+# Get resource with fully qualified name (always unique)
+content = registry.get_resource("acme-icons/lucide:lightbulb")
+
+# Get resource with short pack name (works if unique)
 content = registry.get_resource("lucide:lightbulb")
 
 # Get resource without prefix (searches packs by priority)
@@ -65,24 +74,69 @@ elif content.content_type == "image/png":
 # List all resources from all packs
 for resource_info in registry.list_resources():
     print(f"{resource_info.pack}:{resource_info.name} ({resource_info.content_type})")
+    # pack is qualified name (e.g., "acme-icons/lucide")
 
-# List resources from a specific pack
+# List resources from a specific pack (qualified or short name)
+for resource_info in registry.list_resources(pack="acme-icons/lucide"):
+    print(resource_info.name)
 for resource_info in registry.list_resources(pack="lucide"):
     print(resource_info.name)
 
-# List registered packs
-for pack_name in registry.list_packs():
-    print(pack_name)
+# List registered packs (returns qualified names)
+for qualified_name in registry.list_packs():
+    print(qualified_name)  # e.g., "acme-icons/lucide"
 ```
 
 ### Blocking Resource Packs
 
 ```python
-# Block specific packs
-registry = ResourceRegistry(blocklist={"broken-pack", "test-pack"})
+# Block specific packs (accepts short or qualified names)
+registry = ResourceRegistry(blocklist={"broken-pack", "acme-icons/lucide"})
 
 # Block via environment variable
-# RESOURCE_DISCOVERY_BLOCKLIST="broken-pack,test-pack" python app.py
+# RESOURCE_DISCOVERY_BLOCKLIST="broken-pack,acme-icons/lucide" python app.py
+```
+
+### Handling Prefix Collisions
+
+When multiple packs claim the same prefix, the registry emits warnings and resolves by priority:
+
+```python
+import warnings
+
+# Filter collision warnings if desired
+warnings.filterwarnings("ignore", category=PrefixCollisionWarning)
+
+registry = ResourceRegistry()
+
+# Both packs remain accessible via qualified names
+content1 = registry.get_resource("acme-icons/lucide:lightbulb")
+content2 = registry.get_resource("cool-icons/lucide:lightbulb")
+
+# Inspect collisions
+collisions = registry.get_prefix_collisions()
+# {"lucide": ["acme-icons/lucide", "cool-icons/lucide"]}
+```
+
+### Custom Prefix Mapping
+
+Override prefix mappings to resolve collisions or add custom aliases:
+
+```python
+# Via constructor
+registry = ResourceRegistry(
+    prefix_map={
+        "icons": "acme-icons/lucide",  # Map "icons" to specific pack
+        "mi": "material-icons/core",   # Custom alias
+    }
+)
+
+# Via environment variable
+# RESOURCE_PREFIX_MAP="icons=acme-icons/lucide,mi=material-icons/core" python app.py
+
+# Inspect current mappings
+prefix_map = registry.get_prefix_map()
+# {"icons": "acme-icons/lucide", "mi": "material-icons/core", ...}
 ```
 
 ## Creating Resource Packs
@@ -137,11 +191,8 @@ class MyAppResourcePack:
     def get_priority(self) -> int:
         return 100
     
-    def get_name(self) -> str:
-        return "myapp-resources"
-    
     def get_prefixes(self) -> list[str]:
-        return ["myapp"]
+        return ["myapp"]  # Optional aliases (pack name is auto-registered)
 
 # myapp/__init__.py
 def get_resource_provider():
