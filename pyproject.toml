@@ -25,6 +25,9 @@ Homepage = "https://github.com/kws/justmyresource"
 Repository = "https://github.com/kws/justmyresource"
 Issues = "https://github.com/kws/justmyresource/issues"
 
+[project.scripts]
+justmyresource = "justmyresource.cli:main"
+
 [project.entry-points."justmyresource.packs"]
 # Entry point group for resource pack discovery
 # Example: "my-resource-pack" = "my_resource_pack:get_resource_provider"

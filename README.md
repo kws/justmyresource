@@ -89,6 +89,120 @@ for qualified_name in registry.list_packs():
     print(qualified_name)  # e.g., "acme-icons/lucide"
 ```
 
+## Command-Line Interface
+
+JustMyResource includes a CLI tool for discovering, inspecting, and extracting resources from the command line.
+
+### Installation
+
+The CLI is automatically available after installing justmyresource:
+
+```bash
+pip install justmyresource
+justmyresource --help
+```
+
+### Commands
+
+#### List Resources
+
+List all available resources with optional filtering:
+
+```bash
+# List all resources from all packs
+justmyresource list
+
+# List resources from a specific pack
+justmyresource list --pack lucide
+
+# Filter by glob pattern
+justmyresource list --filter "arrow-*"
+
+# Show pack and content type information
+justmyresource list --verbose
+
+# JSON output
+justmyresource list --json
+```
+
+#### Get Resource (Metadata-First)
+
+Inspect resource metadata or extract to file/stdout:
+
+```bash
+# Show metadata only (default - safe for binary resources)
+justmyresource get lucide:lightbulb
+
+# Output to stdout (for piping)
+justmyresource get lucide:lightbulb -o -
+
+# Save to file
+justmyresource get lucide:lightbulb -o icon.svg
+
+# JSON output
+justmyresource get lucide:lightbulb --json
+```
+
+The default behavior shows metadata (size, content-type, pack info) without outputting binary data to the terminal, preventing accidental terminal corruption.
+
+#### List Resource Packs
+
+List all registered resource packs:
+
+```bash
+# Simple list
+justmyresource packs
+
+# Detailed information (prefixes, aliases, collisions)
+justmyresource packs --verbose
+
+# JSON output
+justmyresource packs --json
+```
+
+#### Resource Information
+
+Show detailed information about a specific resource:
+
+```bash
+# Detailed resource information
+justmyresource info lucide:lightbulb
+
+# JSON output
+justmyresource info lucide:lightbulb --json
+```
+
+### Global Options
+
+All commands support these global options:
+
+- `--json`: Output in JSON format
+- `--blocklist <packs>`: Comma-separated list of pack names to block
+- `--prefix-map <mappings>`: Override prefix mappings (format: `"alias1=dist1/pack1,alias2=dist2/pack2"`)
+- `--default-prefix <prefix>`: Set default prefix for bare-name lookups
+
+### Examples
+
+```bash
+# Discover available icon packs
+justmyresource packs
+
+# Find all arrow icons
+justmyresource list --filter "*arrow*"
+
+# Inspect a specific icon
+justmyresource get lucide:arrow-right
+
+# Extract icon to file
+justmyresource get lucide:arrow-right -o arrow.svg
+
+# Use with default prefix
+justmyresource --default-prefix lucide get lightbulb
+
+# Pipe SVG to another tool
+justmyresource get lucide:lightbulb -o - | grep "path"
+```
+
 ### Blocking Resource Packs
 
 ```python
