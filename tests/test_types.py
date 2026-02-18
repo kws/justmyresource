@@ -211,3 +211,4 @@ def test_registered_pack_no_aliases():
     )
 
     assert registered.aliases == ()
+
