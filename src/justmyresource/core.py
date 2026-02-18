@@ -280,6 +280,10 @@ class ResourceRegistry:
         if prefix not in self._prefixes:
             # No collision, register it
             self._prefixes[prefix] = qualified_name
+        elif self._prefixes[prefix] == qualified_name:
+            # Same pack re-registering the same prefix (e.g. alias matches
+            # the short pack name) — not a real collision, skip silently.
+            return
         else:
             # Collision detected - mark as ambiguous
             existing_qualified = self._prefixes[prefix]
