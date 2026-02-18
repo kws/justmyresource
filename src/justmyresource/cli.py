@@ -389,6 +389,69 @@ def cmd_packs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_render(args: argparse.Namespace) -> int:
+    """Render a resource to PNG.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code (0 for success, 2 if not found, 1 on error).
+    """
+    from justmyresource.render import svg_to_png
+
+    registry = _get_registry(
+        blocklist=args.blocklist,
+        prefix_map=args.prefix_map,
+        default_prefix=args.default_prefix,
+    )
+    registry.discover()
+
+    try:
+        resource = registry.get_resource(args.name)
+    except ValueError as e:
+        if args.json:
+            print(json.dumps({"found": False, "error": str(e)}, indent=2))
+        else:
+            print(f"Resource not found: {args.name}", file=sys.stderr)
+            print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    # Render to PNG
+    try:
+        png_resource = svg_to_png(
+            resource,
+            width=args.width,
+            height=args.height,
+            scale=args.scale,
+        )
+    except ValueError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"Rendering error: {e}", file=sys.stderr)
+        return 1
+    except ImportError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"Rendering not available: {e}", file=sys.stderr)
+        return 1
+
+    # Write PNG output
+    if args.output == "-":
+        # Output to stdout
+        sys.stdout.buffer.write(png_resource.data)
+        return 0
+    else:
+        # Output to file
+        output_path = Path(args.output)
+        output_path.write_bytes(png_resource.data)
+        if not args.json:
+            print(f"Rendered PNG saved to: {output_path}", file=sys.stderr)
+        return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     """Show detailed information about a resource.
 
@@ -568,6 +631,37 @@ def main() -> int:
     )
     info_parser.add_argument("name", help="Resource name (optionally prefixed)")
 
+    # render command (only if cairosvg is available)
+    try:
+        import cairosvg  # noqa: F401
+
+        _has_render = True
+    except ImportError:
+        _has_render = False
+
+    if _has_render:
+        render_parser = subparsers.add_parser(
+            "render", help="Render a resource to PNG"
+        )
+        render_parser.add_argument(
+            "name", help="Resource name (optionally prefixed)"
+        )
+        render_parser.add_argument(
+            "-o",
+            "--output",
+            required=True,
+            help="Output PNG file path (or '-' for stdout)",
+        )
+        render_parser.add_argument(
+            "--width", type=int, help="Output width in pixels"
+        )
+        render_parser.add_argument(
+            "--height", type=int, help="Output height in pixels"
+        )
+        render_parser.add_argument(
+            "--scale", type=float, help="Scale factor (e.g., 2.0)"
+        )
+
     try:
         args = parser.parse_args()
     except SystemExit:
@@ -607,6 +701,8 @@ def main() -> int:
             return cmd_packs(args)
         elif args.command == "info":
             return cmd_info(args)
+        elif args.command == "render":
+            return cmd_render(args)
         else:
             parser.print_help()
             return 1
