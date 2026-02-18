@@ -3,6 +3,7 @@
 from justmyresource.core import ResourceRegistry, get_default_registry
 from justmyresource.pack_utils import ZippedResourcePack
 from justmyresource.types import (
+    PackInfo,
     PrefixCollisionWarning,
     RegisteredPack,
     ResourceContent,
@@ -13,6 +14,7 @@ from justmyresource.types import (
 __version__ = "0.2.0.dev0"
 
 __all__ = [
+    "PackInfo",
     "PrefixCollisionWarning",
     "RegisteredPack",
     "ResourceContent",

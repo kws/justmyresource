@@ -67,6 +67,14 @@ class ResourcePack(Protocol):
         """
         ...
 
+    def get_pack_info(self) -> PackInfo:
+        """Return metadata describing this resource pack.
+
+        Returns:
+            PackInfo object containing description, source URL, and license information.
+        """
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class ResourceContent:
@@ -126,6 +134,20 @@ class RegisteredPack:
     def qualified_name(self) -> str:
         """Return qualified pack name in 'dist_name/pack_name' format."""
         return f"{self.dist_name}/{self.pack_name}"
+
+
+@dataclass(frozen=True, slots=True)
+class PackInfo:
+    """Lightweight metadata describing a resource pack."""
+
+    description: str
+    """Brief human-readable description of the pack."""
+
+    source_url: str | None = None
+    """URL to the upstream source (e.g., GitHub repo or project page)."""
+
+    license_spdx: str | None = None
+    """SPDX license identifier for the pack's resources (e.g., 'ISC', 'MIT', 'CC-BY-4.0')."""
 
 
 @dataclass(frozen=True, slots=True)
