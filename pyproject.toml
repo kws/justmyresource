@@ -1,6 +1,6 @@
 [project]
 name = "justmyresource"
-version = "1.1.0.dev1"
+version = "1.1.0"
 description = "Resource discovery and resolution library for Python"
 authors = [
     {name = "Kaj Siebert", email = "kaj@k-si.com"}
