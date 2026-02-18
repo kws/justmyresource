@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,9 +19,15 @@ def mock_registry():
     """Create a mock registry with test packs."""
     pack1 = MockResourcePack(
         resources={
-            "icon1": create_test_resource_content(b"<svg>icon1</svg>", "image/svg+xml", "utf-8"),
-            "icon2": create_test_resource_content(b"<svg>icon2</svg>", "image/svg+xml", "utf-8"),
-            "arrow-left": create_test_resource_content(b"<svg>arrow</svg>", "image/svg+xml", "utf-8"),
+            "icon1": create_test_resource_content(
+                b"<svg>icon1</svg>", "image/svg+xml", "utf-8"
+            ),
+            "icon2": create_test_resource_content(
+                b"<svg>icon2</svg>", "image/svg+xml", "utf-8"
+            ),
+            "arrow-left": create_test_resource_content(
+                b"<svg>arrow</svg>", "image/svg+xml", "utf-8"
+            ),
         },
         dist_name="acme-icons",
         pack_name="lucide",
@@ -46,21 +51,53 @@ def mock_registry():
         def list_resources(pack=None):
             if pack == "acme-icons/lucide" or pack == "lucide":
                 return [
-                    ResourceInfo(name="icon1", pack="acme-icons/lucide", content_type="image/svg+xml"),
-                    ResourceInfo(name="icon2", pack="acme-icons/lucide", content_type="image/svg+xml"),
-                    ResourceInfo(name="arrow-left", pack="acme-icons/lucide", content_type="image/svg+xml"),
+                    ResourceInfo(
+                        name="icon1",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
+                    ResourceInfo(
+                        name="icon2",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
+                    ResourceInfo(
+                        name="arrow-left",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
                 ]
             elif pack == "cool-icons/feather" or pack == "feather":
                 return [
-                    ResourceInfo(name="icon3", pack="cool-icons/feather", content_type="image/png"),
+                    ResourceInfo(
+                        name="icon3",
+                        pack="cool-icons/feather",
+                        content_type="image/png",
+                    ),
                 ]
             else:
                 # All packs
                 return [
-                    ResourceInfo(name="icon1", pack="acme-icons/lucide", content_type="image/svg+xml"),
-                    ResourceInfo(name="icon2", pack="acme-icons/lucide", content_type="image/svg+xml"),
-                    ResourceInfo(name="arrow-left", pack="acme-icons/lucide", content_type="image/svg+xml"),
-                    ResourceInfo(name="icon3", pack="cool-icons/feather", content_type="image/png"),
+                    ResourceInfo(
+                        name="icon1",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
+                    ResourceInfo(
+                        name="icon2",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
+                    ResourceInfo(
+                        name="arrow-left",
+                        pack="acme-icons/lucide",
+                        content_type="image/svg+xml",
+                    ),
+                    ResourceInfo(
+                        name="icon3",
+                        pack="cool-icons/feather",
+                        content_type="image/png",
+                    ),
                 ]
 
         registry.list_resources = MagicMock(side_effect=list_resources)
@@ -68,9 +105,13 @@ def mock_registry():
         # Mock get_resource
         def get_resource(name):
             if name == "lucide:icon1":
-                return create_test_resource_content(b"<svg>icon1</svg>", "image/svg+xml", "utf-8")
+                return create_test_resource_content(
+                    b"<svg>icon1</svg>", "image/svg+xml", "utf-8"
+                )
             elif name == "lucide:icon2":
-                return create_test_resource_content(b"<svg>icon2</svg>", "image/svg+xml", "utf-8")
+                return create_test_resource_content(
+                    b"<svg>icon2</svg>", "image/svg+xml", "utf-8"
+                )
             elif name == "lucide:missing":
                 raise ValueError("Resource not found: missing")
             else:
@@ -79,7 +120,9 @@ def mock_registry():
         registry.get_resource = MagicMock(side_effect=get_resource)
 
         # Mock list_packs
-        registry.list_packs = MagicMock(return_value=["acme-icons/lucide", "cool-icons/feather"])
+        registry.list_packs = MagicMock(
+            return_value=["acme-icons/lucide", "cool-icons/feather"]
+        )
 
         # Mock get_prefix_map
         registry.get_prefix_map = MagicMock(
@@ -556,7 +599,9 @@ def test_cmd_packs_with_pack_info(capsys, mock_registry):
         source_url="https://example.com",
         license_spdx="MIT",
     )
-    mock_registry._packs["acme-icons/lucide"].pack.get_pack_info = MagicMock(return_value=pack_info)
+    mock_registry._packs["acme-icons/lucide"].pack.get_pack_info = MagicMock(
+        return_value=pack_info
+    )
 
     args = argparse.Namespace(
         blocklist=None,
@@ -663,8 +708,9 @@ def test_main_info_command(capsys, mock_registry):
 
 def test_main_keyboard_interrupt(capsys, mock_registry):
     """Test main() handling KeyboardInterrupt."""
-    with patch("sys.argv", ["justmyresource", "list"]), patch(
-        "justmyresource.cli.cmd_list", side_effect=KeyboardInterrupt
+    with (
+        patch("sys.argv", ["justmyresource", "list"]),
+        patch("justmyresource.cli.cmd_list", side_effect=KeyboardInterrupt),
     ):
         result = main()
         assert result == 130
@@ -674,8 +720,9 @@ def test_main_keyboard_interrupt(capsys, mock_registry):
 
 def test_main_exception(capsys, mock_registry):
     """Test main() handling general exceptions."""
-    with patch("sys.argv", ["justmyresource", "list"]), patch(
-        "justmyresource.cli.cmd_list", side_effect=RuntimeError("Test error")
+    with (
+        patch("sys.argv", ["justmyresource", "list"]),
+        patch("justmyresource.cli.cmd_list", side_effect=RuntimeError("Test error")),
     ):
         result = main()
         assert result == 1
@@ -685,8 +732,9 @@ def test_main_exception(capsys, mock_registry):
 
 def test_main_exception_json(capsys, mock_registry):
     """Test main() handling exceptions with JSON output."""
-    with patch("sys.argv", ["justmyresource", "--json", "list"]), patch(
-        "justmyresource.cli.cmd_list", side_effect=RuntimeError("Test error")
+    with (
+        patch("sys.argv", ["justmyresource", "--json", "list"]),
+        patch("justmyresource.cli.cmd_list", side_effect=RuntimeError("Test error")),
     ):
         result = main()
         assert result == 1
@@ -698,6 +746,7 @@ def test_main_exception_json(capsys, mock_registry):
 
 def test_cmd_get_binary_resource(tmp_path, mock_registry):
     """Test get command with binary resource (PNG)."""
+
     # Mock binary resource
     def get_resource(name):
         if name == "feather:icon3":
@@ -741,4 +790,3 @@ def test_cmd_get_with_resource_path(capsys, mock_registry):
     captured = capsys.readouterr()
     assert "Path:" in captured.out
     assert "/path/to/icon.svg" in captured.out
-

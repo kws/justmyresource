@@ -147,7 +147,9 @@ def test_get_entry_points_skip_no_list_resources():
     """Test _get_entry_points() skips packs without list_resources method."""
     # Create object that has get_resource but not list_resources
     invalid_pack = MagicMock()
-    invalid_pack.get_resource = MagicMock(return_value=create_test_resource_content(b"data"))
+    invalid_pack.get_resource = MagicMock(
+        return_value=create_test_resource_content(b"data")
+    )
     del invalid_pack.list_resources  # Remove list_resources method
 
     mock_ep = MagicMock()
@@ -371,4 +373,3 @@ def test_get_entry_points_exception_in_factory():
         packs = list(registry.list_packs())
         assert "acme-icons/lucide" in packs
         assert "broken-pack/broken" not in packs
-

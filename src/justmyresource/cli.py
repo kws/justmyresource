@@ -14,7 +14,7 @@ from justmyresource.core import ResourceRegistry
 from justmyresource.types import PackInfo, ResourceInfo
 
 if TYPE_CHECKING:
-    from justmyresource.types import ResourceContent
+    pass
 
 
 def _get_registry(
@@ -50,7 +50,11 @@ def _format_size(size_bytes: int) -> str:
     """
     for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}" if size_bytes >= 1.0 else f"{int(size_bytes)} {unit}"
+            return (
+                f"{size_bytes:.1f} {unit}"
+                if size_bytes >= 1.0
+                else f"{int(size_bytes)} {unit}"
+            )
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} TB"
 
@@ -96,16 +100,16 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     # Apply glob filter if provided
     if args.filter:
-        resources = [
-            r for r in resources if fnmatch.fnmatch(r.name, args.filter)
-        ]
+        resources = [r for r in resources if fnmatch.fnmatch(r.name, args.filter)]
 
     # Apply search filter if provided
     if args.search:
         search_query = args.search.lower()
         resources = [
-            r for r in resources
-            if _is_subsequence(search_query, r.name) or _is_subsequence(search_query, r.pack)
+            r
+            for r in resources
+            if _is_subsequence(search_query, r.name)
+            or _is_subsequence(search_query, r.pack)
         ]
 
     # Sort by pack, then by name
@@ -130,7 +134,9 @@ def cmd_list(args: argparse.Namespace) -> int:
             # Single pack: flat output (preserves piping)
             for resource in resources:
                 if args.verbose:
-                    type_info = f" [{resource.content_type}]" if resource.content_type else ""
+                    type_info = (
+                        f" [{resource.content_type}]" if resource.content_type else ""
+                    )
                     print(f"{resource.name}{type_info}")
                 else:
                     print(resource.name)
@@ -148,7 +154,11 @@ def cmd_list(args: argparse.Namespace) -> int:
                 print(f"{pack_name} ({count} {resource_word}):")
                 for resource in pack_resources:
                     if args.verbose:
-                        type_info = f" [{resource.content_type}]" if resource.content_type else ""
+                        type_info = (
+                            f" [{resource.content_type}]"
+                            if resource.content_type
+                            else ""
+                        )
                         print(f"  {resource.name}{type_info}")
                     else:
                         print(f"  {resource.name}")
@@ -158,7 +168,10 @@ def cmd_list(args: argparse.Namespace) -> int:
             total_resources = len(resources)
             total_packs = len(by_pack)
             pack_word = "pack" if total_packs == 1 else "packs"
-            print(f"{total_resources} resources in {total_packs} {pack_word}", file=sys.stderr)
+            print(
+                f"{total_resources} resources in {total_packs} {pack_word}",
+                file=sys.stderr,
+            )
 
     return 0
 
@@ -353,7 +366,11 @@ def cmd_packs(args: argparse.Namespace) -> int:
             for pack in packs:
                 print(pack["qualified_name"])
                 # Show description, source, and license if available
-                if pack.get("description") or pack.get("source_url") or pack.get("license_spdx"):
+                if (
+                    pack.get("description")
+                    or pack.get("source_url")
+                    or pack.get("license_spdx")
+                ):
                     description = pack.get("description", "")
                     source_url = pack.get("source_url", "")
                     license_spdx = pack.get("license_spdx", "")
@@ -438,7 +455,7 @@ def cmd_info(args: argparse.Namespace) -> int:
             if registered_pack.aliases:
                 print(f"  Aliases: {', '.join(registered_pack.aliases)}")
 
-        print(f"\nContent:")
+        print("\nContent:")
         print(f"  Content-Type: {resource.content_type}")
         if resource.encoding:
             print(f"  Encoding: {resource.encoding}")
@@ -456,7 +473,7 @@ def cmd_info(args: argparse.Namespace) -> int:
 
         # Show all metadata
         if resource.metadata:
-            print(f"\nMetadata:")
+            print("\nMetadata:")
             for key, value in resource.metadata.items():
                 if isinstance(value, dict):
                     print(f"  {key.capitalize()}:")
@@ -546,7 +563,9 @@ def main() -> int:
     )
 
     # info command
-    info_parser = subparsers.add_parser("info", help="Show detailed resource information")
+    info_parser = subparsers.add_parser(
+        "info", help="Show detailed resource information"
+    )
     info_parser.add_argument("name", help="Resource name (optionally prefixed)")
 
     try:
@@ -559,9 +578,7 @@ def main() -> int:
     # Parse blocklist
     blocklist: set[str] | None = None
     if args.blocklist:
-        blocklist = {
-            name.strip() for name in args.blocklist.split(",") if name.strip()
-        }
+        blocklist = {name.strip() for name in args.blocklist.split(",") if name.strip()}
 
     # Parse prefix_map
     prefix_map: dict[str, str] | None = None
@@ -606,4 +623,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

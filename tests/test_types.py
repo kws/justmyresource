@@ -20,13 +20,13 @@ def test_resource_content_text_with_encoding():
 
 def test_resource_content_text_with_utf8_svg():
     """Test ResourceContent.text property with UTF-8 SVG."""
-    svg_data = b'<svg><text>\xe2\x9c\x93</text></svg>'  # Checkmark character
+    svg_data = b"<svg><text>\xe2\x9c\x93</text></svg>"  # Checkmark character
     content = ResourceContent(
         data=svg_data,
         content_type="image/svg+xml",
         encoding="utf-8",
     )
-    assert content.text == '<svg><text>✓</text></svg>'
+    assert content.text == "<svg><text>✓</text></svg>"
 
 
 def test_resource_content_text_no_encoding():
@@ -211,4 +211,3 @@ def test_registered_pack_no_aliases():
     )
 
     assert registered.aliases == ()
-
