@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from justmyresource.core import ResourceRegistry
+from justmyresource.types import PackInfo
 
 if TYPE_CHECKING:
     from justmyresource.types import ResourceContent, ResourceInfo
@@ -230,12 +231,22 @@ def cmd_packs(args: argparse.Namespace) -> int:
 
     for qualified_name in sorted(registry.list_packs()):
         registered_pack = registry._packs[qualified_name]
-        pack_info: dict[str, str | list[str]] = {
+        pack_info: dict[str, str | list[str] | None] = {
             "qualified_name": qualified_name,
             "dist_name": registered_pack.dist_name,
             "pack_name": registered_pack.pack_name,
             "aliases": list(registered_pack.aliases),
         }
+
+        # Get PackInfo metadata if available
+        pack_metadata: PackInfo | None = None
+        if hasattr(registered_pack.pack, "get_pack_info"):
+            pack_metadata = registered_pack.pack.get_pack_info()
+
+        if pack_metadata:
+            pack_info["description"] = pack_metadata.description
+            pack_info["source_url"] = pack_metadata.source_url
+            pack_info["license_spdx"] = pack_metadata.license_spdx
 
         if args.verbose:
             # Find all prefixes that map to this pack
@@ -267,6 +278,12 @@ def cmd_packs(args: argparse.Namespace) -> int:
                 print(f"  {pack['qualified_name']}")
                 print(f"    Distribution: {pack['dist_name']}")
                 print(f"    Pack: {pack['pack_name']}")
+                if pack.get("description"):
+                    print(f"    Description: {pack['description']}")
+                if pack.get("source_url"):
+                    print(f"    Source: {pack['source_url']}")
+                if pack.get("license_spdx"):
+                    print(f"    License: {pack['license_spdx']}")
                 if pack["aliases"]:
                     print(f"    Aliases: {', '.join(pack['aliases'])}")
                 if "prefixes" in pack:
@@ -278,6 +295,22 @@ def cmd_packs(args: argparse.Namespace) -> int:
         else:
             for pack in packs:
                 print(pack["qualified_name"])
+                # Show description, source, and license if available
+                if pack.get("description") or pack.get("source_url") or pack.get("license_spdx"):
+                    description = pack.get("description", "")
+                    source_url = pack.get("source_url", "")
+                    license_spdx = pack.get("license_spdx", "")
+                    parts = []
+                    if description:
+                        parts.append(description)
+                    if source_url and license_spdx:
+                        parts.append(f"{source_url} | {license_spdx}")
+                    elif source_url:
+                        parts.append(source_url)
+                    elif license_spdx:
+                        parts.append(license_spdx)
+                    if parts:
+                        print(f"  {' | '.join(parts)}")
 
     return 0
 
