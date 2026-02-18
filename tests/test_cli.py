@@ -128,22 +128,30 @@ def mock_registry():
 
 
 def test_cmd_list_basic(capsys, mock_registry):
-    """Test basic list command."""
+    """Test basic list command with grouped output."""
     args = argparse.Namespace(
         blocklist=None,
         prefix_map=None,
         default_prefix=None,
         pack=None,
         filter=None,
+        search=None,
         verbose=False,
         json=False,
     )
     result = cmd_list(args)
     assert result == 0
     captured = capsys.readouterr()
-    assert "icon1" in captured.out
-    assert "icon2" in captured.out
-    assert "icon3" in captured.out
+    # Check for pack headers
+    assert "acme-icons/lucide" in captured.out
+    assert "cool-icons/feather" in captured.out
+    # Check for resource names (indented)
+    assert "  icon1" in captured.out or "icon1" in captured.out
+    assert "  icon2" in captured.out or "icon2" in captured.out
+    assert "  icon3" in captured.out or "icon3" in captured.out
+    # Check for summary in stderr
+    assert "4 resources" in captured.err
+    assert "2 packs" in captured.err
 
 
 def test_cmd_list_verbose(capsys, mock_registry):
@@ -154,15 +162,18 @@ def test_cmd_list_verbose(capsys, mock_registry):
         default_prefix=None,
         pack=None,
         filter=None,
+        search=None,
         verbose=True,
         json=False,
     )
     result = cmd_list(args)
     assert result == 0
     captured = capsys.readouterr()
-    assert "icon1" in captured.out
+    # Check for pack headers
     assert "acme-icons/lucide" in captured.out
-    assert "image/svg+xml" in captured.out
+    # Check for resource names with content type
+    assert "icon1" in captured.out
+    assert "[image/svg+xml]" in captured.out
 
 
 def test_cmd_list_json(capsys, mock_registry):
@@ -173,6 +184,7 @@ def test_cmd_list_json(capsys, mock_registry):
         default_prefix=None,
         pack=None,
         filter=None,
+        search=None,
         verbose=False,
         json=True,
     )
@@ -194,6 +206,7 @@ def test_cmd_list_filter(capsys, mock_registry):
         default_prefix=None,
         pack=None,
         filter="arrow-*",
+        search=None,
         verbose=False,
         json=False,
     )
@@ -206,13 +219,58 @@ def test_cmd_list_filter(capsys, mock_registry):
 
 
 def test_cmd_list_pack_filter(capsys, mock_registry):
-    """Test list command with pack filter."""
+    """Test list command with pack filter (flat output)."""
     args = argparse.Namespace(
         blocklist=None,
         prefix_map=None,
         default_prefix=None,
         pack="lucide",
         filter=None,
+        search=None,
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    # With --pack, output should be flat (no grouping headers)
+    assert "icon1" in captured.out
+    assert "icon2" in captured.out
+    assert "icon3" not in captured.out
+    # Should not have pack header when filtering to single pack
+    assert "acme-icons/lucide" not in captured.out
+
+
+def test_cmd_list_search_substring(capsys, mock_registry):
+    """Test list command with search (substring matching)."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter=None,
+        search="arrow",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "arrow-left" in captured.out
+    assert "icon1" not in captured.out
+    assert "icon2" not in captured.out
+    assert "icon3" not in captured.out
+
+
+def test_cmd_list_search_subsequence(capsys, mock_registry):
+    """Test list command with search (subsequence matching)."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter=None,
+        search="icn1",
         verbose=False,
         json=False,
     )
@@ -220,8 +278,114 @@ def test_cmd_list_pack_filter(capsys, mock_registry):
     assert result == 0
     captured = capsys.readouterr()
     assert "icon1" in captured.out
-    assert "icon2" in captured.out
+    assert "icon2" not in captured.out
     assert "icon3" not in captured.out
+
+
+def test_cmd_list_search_pack_name(capsys, mock_registry):
+    """Test list command with search matching pack name."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter=None,
+        search="lucide",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    # Should find all resources from lucide pack
+    assert "icon1" in captured.out
+    assert "icon2" in captured.out
+    assert "arrow-left" in captured.out
+    assert "icon3" not in captured.out  # From different pack
+
+
+def test_cmd_list_search_case_insensitive(capsys, mock_registry):
+    """Test list command with search (case-insensitive)."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter=None,
+        search="ARROW",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "arrow-left" in captured.out
+
+
+def test_cmd_list_search_no_results(capsys, mock_registry):
+    """Test list command with search that matches nothing."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter=None,
+        search="nonexistent",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "icon1" not in captured.out
+    assert "icon2" not in captured.out
+    assert "icon3" not in captured.out
+    # Should still show summary
+    assert "0 resources" in captured.err
+
+
+def test_cmd_list_search_with_pack_filter(capsys, mock_registry):
+    """Test list command with search combined with pack filter."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack="lucide",
+        filter=None,
+        search="icon",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    # Should find all resources from lucide pack because "icon" matches pack name "acme-icons/lucide"
+    assert "icon1" in captured.out
+    assert "icon2" in captured.out
+    assert "arrow-left" in captured.out  # Included because pack name matches "icon"
+    assert "icon3" not in captured.out  # From different pack
+
+
+def test_cmd_list_search_with_filter(capsys, mock_registry):
+    """Test list command with search combined with glob filter."""
+    args = argparse.Namespace(
+        blocklist=None,
+        prefix_map=None,
+        default_prefix=None,
+        pack=None,
+        filter="icon*",
+        search="1",
+        verbose=False,
+        json=False,
+    )
+    result = cmd_list(args)
+    assert result == 0
+    captured = capsys.readouterr()
+    # Should find icon1 (matches both glob and search)
+    assert "icon1" in captured.out
+    assert "icon2" not in captured.out  # Matches glob but not search
+    assert "icon3" not in captured.out  # Matches glob but not search
+    assert "arrow-left" not in captured.out  # Doesn't match glob
 
 
 def test_cmd_get_metadata_only(capsys, mock_registry):

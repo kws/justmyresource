@@ -6,14 +6,15 @@ import argparse
 import fnmatch
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from justmyresource.core import ResourceRegistry
-from justmyresource.types import PackInfo
+from justmyresource.types import PackInfo, ResourceInfo
 
 if TYPE_CHECKING:
-    from justmyresource.types import ResourceContent, ResourceInfo
+    from justmyresource.types import ResourceContent
 
 
 def _get_registry(
@@ -54,6 +55,27 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
+def _is_subsequence(query: str, text: str) -> bool:
+    """Check if query is a subsequence of text (case-insensitive).
+
+    All characters in query must appear in order in text.
+
+    Args:
+        query: The search query.
+        text: The text to search in.
+
+    Returns:
+        True if query is a subsequence of text.
+    """
+    query_lower = query.lower()
+    text_lower = text.lower()
+    query_idx = 0
+    for char in text_lower:
+        if query_idx < len(query_lower) and char == query_lower[query_idx]:
+            query_idx += 1
+    return query_idx == len(query_lower)
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """List all available resources.
 
@@ -78,6 +100,14 @@ def cmd_list(args: argparse.Namespace) -> int:
             r for r in resources if fnmatch.fnmatch(r.name, args.filter)
         ]
 
+    # Apply search filter if provided
+    if args.search:
+        search_query = args.search.lower()
+        resources = [
+            r for r in resources
+            if _is_subsequence(search_query, r.name) or _is_subsequence(search_query, r.pack)
+        ]
+
     # Sort by pack, then by name
     resources.sort(key=lambda r: (r.pack, r.name))
 
@@ -95,13 +125,40 @@ def cmd_list(args: argparse.Namespace) -> int:
         }
         print(json.dumps(output, indent=2))
     else:
-        for resource in resources:
-            if args.verbose:
-                pack_info = f" ({resource.pack})"
-                type_info = f" [{resource.content_type}]" if resource.content_type else ""
-                print(f"{resource.name}{pack_info}{type_info}")
-            else:
-                print(resource.name)
+        # Group by pack if not filtering to a single pack
+        if args.pack:
+            # Single pack: flat output (preserves piping)
+            for resource in resources:
+                if args.verbose:
+                    type_info = f" [{resource.content_type}]" if resource.content_type else ""
+                    print(f"{resource.name}{type_info}")
+                else:
+                    print(resource.name)
+        else:
+            # Multiple packs: grouped output
+            by_pack: defaultdict[str, list[ResourceInfo]] = defaultdict(list)
+            for resource in resources:
+                by_pack[resource.pack].append(resource)
+
+            # Print grouped by pack
+            for pack_name in sorted(by_pack.keys()):
+                pack_resources = by_pack[pack_name]
+                count = len(pack_resources)
+                resource_word = "resource" if count == 1 else "resources"
+                print(f"{pack_name} ({count} {resource_word}):")
+                for resource in pack_resources:
+                    if args.verbose:
+                        type_info = f" [{resource.content_type}]" if resource.content_type else ""
+                        print(f"  {resource.name}{type_info}")
+                    else:
+                        print(f"  {resource.name}")
+                print()  # Blank line between packs
+
+            # Summary line to stderr (doesn't break piping)
+            total_resources = len(resources)
+            total_packs = len(by_pack)
+            pack_word = "pack" if total_packs == 1 else "packs"
+            print(f"{total_resources} resources in {total_packs} {pack_word}", file=sys.stderr)
 
     return 0
 
@@ -457,6 +514,12 @@ def main() -> int:
         "--filter",
         type=str,
         help="Glob pattern to filter resource names (e.g., 'arrow-*')",
+    )
+    list_parser.add_argument(
+        "-s",
+        "--search",
+        type=str,
+        help="Fuzzy search query (case-insensitive subsequence matching on resource and pack names)",
     )
     list_parser.add_argument(
         "--verbose",
