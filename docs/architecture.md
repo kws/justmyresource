@@ -113,13 +113,21 @@ class ResourcePack(Protocol):
         
         Prefixes are convenience aliases for namespace disambiguation.
         For example, a pack with prefix "luc" can be accessed as "luc:lightbulb".
-        
+
         Note: The pack's entry point name and qualified name (dist/pack)
         are automatically registered as prefixes. This method only provides
         additional short aliases.
         
         Returns:
             List of prefix strings (e.g., ["luc", "mi"]).
+        """
+        ...
+    
+    def get_pack_info(self) -> PackInfo:
+        """Return metadata describing this resource pack.
+        
+        Returns:
+            PackInfo object containing description, source URL, and license information.
         """
         ...
 ```
@@ -162,6 +170,51 @@ This wrapper allows consumers to:
 - Handle mixed-format packs (e.g., a samples pack with both SVG and PNG)
 
 **Design Note**: The `data` field always contains the resource bytes. Packs may include provenance URLs or other metadata in the `metadata` dict if needed.
+
+### 3.4 PackInfo Type
+
+Pack metadata is provided via `PackInfo` objects:
+
+```python
+@dataclass(frozen=True, slots=True)
+class PackInfo:
+    """Lightweight metadata describing a resource pack."""
+    
+    description: str
+    """Brief human-readable description of the pack."""
+    
+    source_url: str | None = None
+    """URL to the upstream source (e.g., GitHub repo or project page)."""
+    
+    license_spdx: str | None = None
+    """SPDX license identifier for the pack's resources (e.g., 'ISC', 'MIT', 'CC-BY-4.0')."""
+```
+
+Packs implement `get_pack_info()` to return this metadata, which can be used by consumers to display pack information, verify licenses, or link to upstream sources.
+
+### 3.5 ResourceInfo Type
+
+Lightweight resource metadata (without loading content) is provided via `ResourceInfo` objects:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ResourceInfo:
+    """Lightweight metadata about a discovered resource (no content loaded)."""
+    
+    name: str
+    """Resource name/identifier."""
+    
+    pack: str
+    """Qualified name of the resource pack this resource belongs to (dist/pack format)."""
+    
+    content_type: str | None = None
+    """MIME type if known, None if unknown."""
+    
+    tags: tuple[str, ...] | None = None
+    """Optional tags for categorization/search."""
+```
+
+The `list_resources()` method returns `ResourceInfo` objects, allowing consumers to discover available resources without loading their content.
 
 ## 4. Resource Pack Discovery
 
@@ -601,16 +654,22 @@ The `ZippedResourcePack` helper class provides a complete implementation for pac
 
 ```python
 from justmyresource.pack_utils import ZippedResourcePack
+from justmyresource.types import PackInfo
 
 class LucideIconPack(ZippedResourcePack):
     """Lucide icon pack using zip storage."""
     
     def __init__(self):
         super().__init__(
-            package_name="jmr_lucide",
+            package_name="justmyresource_lucide",
             archive_name="icons.zip",
             default_content_type="image/svg+xml",
-            prefixes=["luc"]
+            prefixes=["luc"],
+            pack_info=PackInfo(
+                description="Lucide icon pack - Beautiful & consistent icon toolkit",
+                source_url="https://lucide.dev",
+                license_spdx="ISC",
+            )
         )
     
     def _normalize_name(self, name: str) -> str:
@@ -622,6 +681,8 @@ class LucideIconPack(ZippedResourcePack):
 def get_resource_provider():
     return LucideIconPack()
 ```
+
+**Note**: The `pack_info` parameter is optional. If not provided, `ZippedResourcePack` will attempt to read pack metadata from `pack_manifest.json` (if present). The `get_pack_info()` method returns the `PackInfo` object, which can be used by consumers to display pack information.
 
 This eliminates boilerplate and ensures consistent behavior across packs. The helper provides:
 
@@ -726,7 +787,98 @@ class UnsplashImagePack:
 - Performs blocking network I/O inside methods
 - May include provenance URLs or metadata in `ResourceContent.metadata` if needed
 
-## 9. Best Practices
+## 9. Command-Line Interface
+
+JustMyResource provides a command-line interface (`justmyresource`) for discovering and inspecting resources from the terminal.
+
+### 9.1 CLI Commands
+
+The CLI supports four main commands:
+
+#### `list` - List Available Resources
+
+```bash
+# List all resources
+justmyresource list
+
+# List resources from a specific pack
+justmyresource list --pack lucide
+
+# Filter resources by glob pattern
+justmyresource list --filter "arrow-*"
+
+# Show verbose output (pack and content type)
+justmyresource list --verbose
+
+# Output as JSON
+justmyresource list --json
+```
+
+#### `get` - Get Resource (Metadata-First)
+
+```bash
+# Show resource metadata
+justmyresource get lucide:lightbulb
+
+# Output resource to stdout
+justmyresource get lucide:lightbulb --output -
+
+# Save resource to file
+justmyresource get lucide:lightbulb --output icon.svg
+
+# Output metadata as JSON
+justmyresource get lucide:lightbulb --json
+```
+
+#### `packs` - List Registered Packs
+
+```bash
+# List all registered packs
+justmyresource packs
+
+# Show detailed pack information
+justmyresource packs --verbose
+
+# Output as JSON
+justmyresource packs --json
+```
+
+#### `info` - Show Detailed Resource Information
+
+```bash
+# Show detailed resource information
+justmyresource info lucide:lightbulb
+
+# Output as JSON
+justmyresource info lucide:lightbulb --json
+```
+
+### 9.2 Global Options
+
+All commands support these global options:
+
+- `--blocklist`: Comma-separated list of pack names to exclude
+- `--prefix-map`: Prefix mapping overrides (format: `"alias1=dist1/pack1,alias2=dist2/pack2"`)
+- `--default-prefix`: Default prefix for bare-name lookups
+- `--json`: Output results in JSON format
+
+### 9.3 CLI Usage Examples
+
+```bash
+# Use default prefix for bare names
+justmyresource --default-prefix lucide get lightbulb
+
+# Block specific packs
+justmyresource --blocklist "test-pack,broken-pack" list
+
+# Override prefix mappings
+justmyresource --prefix-map "icons=acme-icons/lucide" get icons:lightbulb
+
+# Combine options
+justmyresource --json --default-prefix lucide list --filter "arrow-*"
+```
+
+## 10. Best Practices
 
 ### 9.1 Implementation Recommendations
 
@@ -890,7 +1042,7 @@ registry.register_pack(
 
 Both patterns are well-established in the Python ecosystem and align with the principle of staying lean — no new configuration systems are invented.
 
-## 10. Resource Usage (Out of Scope)
+## 11. Resource Usage (Out of Scope)
 
 **Note**: This library focuses on discovery and retrieval of resources. How those resources are used (rendered, cached, transformed) is the responsibility of the consuming application.
 
@@ -907,22 +1059,23 @@ Consuming applications may:
 
 These concerns are outside the scope of the discovery library.
 
-## 11. Future Considerations & Implementation Status
+## 12. Future Considerations & Implementation Status
 
-### 11.0 Implementation Status
+### 12.0 Implementation Status
 
 This section clarifies what features are currently implemented versus designed for future implementation.
 
 | Feature | Status | Location | Notes |
 |---------|--------|----------|-------|
 | **Core Protocols** | | | |
-| `ResourcePack` (sync) | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Currently requires `list_resources()` |
+| `ResourcePack` (sync) | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Currently requires `list_resources()`, `get_pack_info()` |
 | `ListableResourcePack` | 🔮 Designed | Section 3.2.1 | Will be separated from core protocol |
 | `SearchableResourcePack` | 🔮 Designed | Section 3.2.2 | Query-based discovery (sync) |
 | **Data Types** | | | |
 | `ResourceContent` | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Includes data, content_type, encoding, metadata |
-| `ResourceInfo` | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Lightweight metadata |
+| `ResourceInfo` | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Lightweight metadata with optional tags |
 | `RegisteredPack` | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Pack registration metadata |
+| `PackInfo` | ✅ Implemented | [types.py](justmyresource/src/justmyresource/types.py) | Pack metadata (description, source_url, license_spdx) |
 | **Registry API** | | | |
 | `get_resource()` | ✅ Implemented | [core.py](justmyresource/src/justmyresource/core.py) | Sync resource retrieval |
 | `list_resources()` | ✅ Implemented | [core.py](justmyresource/src/justmyresource/core.py) | Lists from all packs |
@@ -940,6 +1093,8 @@ This section clarifies what features are currently implemented versus designed f
 | Default prefix | ✅ Implemented | [core.py](justmyresource/src/justmyresource/core.py) | For bare-name lookups |
 | **Helpers** | | | |
 | `ZippedResourcePack` | ✅ Implemented | [pack_utils.py](justmyresource/src/justmyresource/pack_utils.py) | Base class for zip-based packs |
+| **User Interfaces** | | | |
+| CLI (`justmyresource`) | ✅ Implemented | [cli.py](justmyresource/src/justmyresource/cli.py) | Commands: list, get, packs, info |
 
 **Legend:**
 - ✅ **Implemented**: Feature exists in current codebase
@@ -947,7 +1102,7 @@ This section clarifies what features are currently implemented versus designed f
 
 **Migration Path**: The capability model decomposition will be implemented when the first online pack is built. This will relax the core `ResourcePack` protocol to only require `get_resource()` and `get_prefixes()`, moving `list_resources()` into the optional `ListableResourcePack` capability.
 
-### 11.1 Async Support (Future Consideration)
+### 12.1 Async Support (Future Consideration)
 
 **Status**: 🔮 **Out of Scope for Current Architecture**
 
@@ -955,28 +1110,28 @@ The current architecture is **synchronous-only** by design. This keeps the core 
 
 For future exploration of async support, see [async-notes.md](async-notes.md), which discusses potential async patterns, trade-offs, and design considerations. Async support is intentionally deferred to maintain simplicity and avoid premature complexity.
 
-### 11.2 Audio Resources
+### 12.2 Audio Resources
 
 Support for audio files with appropriate `ResourceContent`:
 - Audio files (MP3, OGG, WAV)
 - Sound effects, music tracks
 - Metadata: duration, format, sample rate
 
-### 11.3 Video Resources
+### 12.3 Video Resources
 
 Support for video files:
 - Video files (MP4, WebM)
 - Animated content
 - Metadata: duration, resolution, codec
 
-### 11.4 3D Models
+### 12.4 3D Models
 
 Support for 3D model files:
 - 3D model files (GLTF, OBJ)
 - Mesh data, textures
 - Metadata: vertices, materials, animations
 
-### 11.5 Resource Search and Discovery
+### 12.5 Resource Search and Discovery
 
 **Status**: 🔮 **Designed for Future Implementation**
 
@@ -987,7 +1142,7 @@ A capability model decomposition is planned for future implementation:
 
 This capability model will be implemented when the first online pack is built. Until then, all packs must implement `list_resources()` for resource discovery.
 
-## 12. Outstanding Questions
+## 13. Outstanding Questions
 
 ### 12.1 Manual Pack Registration
 
