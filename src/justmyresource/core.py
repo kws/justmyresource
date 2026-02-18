@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import warnings
 from collections.abc import Iterator
+from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 from justmyresource.types import (
@@ -129,18 +130,7 @@ class ResourceRegistry:
         Yields:
             Tuples of (dist_name, pack_name, ResourcePack instance, aliases list).
         """
-        try:
-            from importlib.metadata import entry_points
-
-            eps = entry_points(group="justmyresource.packs")
-        except ImportError:
-            # Python < 3.10 fallback
-            try:
-                import importlib_metadata
-
-                eps = importlib_metadata.entry_points(group="justmyresource.packs")
-            except ImportError:
-                return
+        eps = entry_points(group="justmyresource.packs")
 
         for ep in eps:
             try:
