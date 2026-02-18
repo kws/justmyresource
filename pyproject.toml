@@ -20,6 +20,20 @@ dev = [
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
 ]
+lucide = ["justmyresource-lucide"]
+phosphor = ["justmyresource-phosphor"]
+heroicons = ["justmyresource-heroicons"]
+font-awesome = ["justmyresource-font-awesome"]
+material-icons = ["justmyresource-material-icons"]
+mdi = ["justmyresource-mdi"]
+icons = [
+    "justmyresource-lucide",
+    "justmyresource-phosphor",
+    "justmyresource-heroicons",
+    "justmyresource-font-awesome",
+    "justmyresource-material-icons",
+    "justmyresource-mdi",
+]
 
 [project.urls]
 Homepage = "https://github.com/kws/justmyresource"

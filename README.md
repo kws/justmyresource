@@ -17,6 +17,29 @@ A precise, lightweight, and extensible resource discovery library for Python. Ju
 pip install justmyresource
 ```
 
+## Available Resource Packs
+
+JustMyResource supports icon packs from the [justmyresource-icons](https://github.com/kws/justmyresource-icons) monorepo. Install individual packs or all packs at once using optional dependency groups:
+
+```bash
+# Install a specific icon pack
+pip install justmyresource[lucide]
+
+# Install all icon packs
+pip install justmyresource[icons]
+```
+
+| Pack | PyPI Package | Prefixes | Variants | License |
+|------|-------------|----------|----------|---------|
+| **Lucide** | `justmyresource-lucide` | `lucide`, `luc` | — | ISC |
+| **Material Official** | `justmyresource-material-icons` | `material-icons`, `mi` | filled, outlined, rounded, sharp, two-tone | Apache-2.0 |
+| **Material Community** | `justmyresource-mdi` | `mdi` | — | Apache-2.0 |
+| **Phosphor** | `justmyresource-phosphor` | `phosphor`, `ph` | thin, light, regular, bold, fill, duotone | MIT |
+| **Font Awesome Free** | `justmyresource-font-awesome` | `font-awesome`, `fa` | solid, regular, brands | CC-BY-4.0 |
+| **Heroicons** | `justmyresource-heroicons` | `heroicons`, `hero` | 24/outline, 24/solid, 20/solid, 16/solid | MIT |
+
+For detailed information about each pack, including icon counts, variant details, and usage examples, see the [justmyresource-icons repository](https://github.com/kws/justmyresource-icons).
+
 ## Quick Start
 
 ```python
