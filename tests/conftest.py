@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from justmyresource.core import ResourceRegistry
-from justmyresource.types import ResourceContent, ResourceInfo
+from justmyresource.types import PackInfo, ResourceContent, ResourceInfo
 
 if TYPE_CHECKING:
     pass
@@ -35,6 +35,7 @@ class MockResourcePack:
         dist_name: str = "test-dist",
         pack_name: str = "test-pack",
         prefixes: list[str] | None = None,
+        pack_info: PackInfo | None = None,
     ) -> None:
         """Initialize mock resource pack.
 
@@ -43,11 +44,13 @@ class MockResourcePack:
             dist_name: Distribution name (for testing qualified names).
             pack_name: Pack name (entry point name).
             prefixes: List of alias prefixes for this pack.
+            pack_info: Optional PackInfo metadata.
         """
         self.resources = resources
         self._dist_name = dist_name
         self._pack_name = pack_name
         self._prefixes = prefixes or []
+        self._pack_info = pack_info or PackInfo(description="Test resource pack")
 
     def get_resource(self, name: str) -> ResourceContent:
         """Get resource content."""
@@ -62,6 +65,10 @@ class MockResourcePack:
     def get_prefixes(self) -> list[str]:
         """Return prefixes."""
         return self._prefixes
+
+    def get_pack_info(self) -> PackInfo:
+        """Return pack metadata."""
+        return self._pack_info
 
 
 def create_test_resource_content(

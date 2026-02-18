@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from importlib.resources import files
 from typing import Any
 
-from justmyresource.types import ResourceContent
+from justmyresource.types import PackInfo, ResourceContent
 
 
 class ZippedResourcePack:
@@ -33,23 +33,44 @@ class ZippedResourcePack:
         manifest_name: str = "pack_manifest.json",
         default_content_type: str = "application/octet-stream",
         prefixes: list[str] | None = None,
+        pack_info: PackInfo | None = None,
     ) -> None:
         """Initialize zipped resource pack.
 
         Args:
-            package_name: Python package name containing the zip (e.g., "jmr_lucide").
+            package_name: Python package name containing the zip (e.g., "justmyresource_lucide").
             archive_name: Name of zip file within package (e.g., "icons.zip").
             manifest_name: Name of manifest JSON file (e.g., "pack_manifest.json").
             default_content_type: MIME type for resources (e.g., "image/svg+xml").
-            prefixes: Optional list of prefix aliases.
+            prefixes: Optional list of prefix aliases. If None, reads from manifest.
+            pack_info: Optional PackInfo metadata describing this pack. If None, reads from manifest.
         """
         self._package_name = package_name
         self._archive_name = archive_name
         self._manifest_name = manifest_name
         self.default_content_type = default_content_type
-        self._prefixes = prefixes or []
         self._manifest: dict[str, Any] | None = None
         self._resource_list: list[str] | None = None
+
+        # Load manifest to auto-populate if needed
+        manifest = self.get_manifest()
+        pack_data = manifest.get("pack", {})
+
+        # Auto-populate prefixes from manifest if not provided
+        if prefixes is None:
+            self._prefixes = pack_data.get("prefixes", [])
+        else:
+            self._prefixes = prefixes
+
+        # Auto-populate PackInfo from manifest if not provided
+        if pack_info is None:
+            self._pack_info = PackInfo(
+                description=pack_data.get("description", "Resource pack"),
+                source_url=pack_data.get("source_url"),
+                license_spdx=pack_data.get("upstream_license"),
+            )
+        else:
+            self._pack_info = pack_info
 
     @contextmanager
     def _open_zip(self):
@@ -179,3 +200,11 @@ class ZippedResourcePack:
             List of prefix aliases.
         """
         return self._prefixes
+
+    def get_pack_info(self) -> PackInfo:
+        """Return metadata describing this resource pack.
+
+        Returns:
+            PackInfo object containing description, source URL, and license information.
+        """
+        return self._pack_info
