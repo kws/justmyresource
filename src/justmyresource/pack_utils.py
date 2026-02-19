@@ -31,7 +31,7 @@ class ZippedResourcePack:
         package_name: str,
         archive_name: str = "icons.zip",
         manifest_name: str = "pack_manifest.json",
-        default_content_type: str = "application/octet-stream",
+        default_content_type: str | None = None,
         prefixes: list[str] | None = None,
         pack_info: PackInfo | None = None,
     ) -> None:
@@ -42,19 +42,28 @@ class ZippedResourcePack:
             archive_name: Name of zip file within package (e.g., "icons.zip").
             manifest_name: Name of manifest JSON file (e.g., "pack_manifest.json").
             default_content_type: MIME type for resources (e.g., "image/svg+xml").
+                If None, reads from manifest contents.format, falling back to
+                "application/octet-stream" if not found.
             prefixes: Optional list of prefix aliases. If None, reads from manifest.
             pack_info: Optional PackInfo metadata describing this pack. If None, reads from manifest.
         """
         self._package_name = package_name
         self._archive_name = archive_name
         self._manifest_name = manifest_name
-        self.default_content_type = default_content_type
         self._manifest: dict[str, Any] | None = None
         self._resource_list: list[str] | None = None
 
         # Load manifest to auto-populate if needed
         manifest = self.get_manifest()
         pack_data = manifest.get("pack", {})
+
+        # Auto-populate content type from manifest if not provided
+        if default_content_type is None:
+            self.default_content_type = (
+                manifest.get("contents", {}).get("format", "application/octet-stream")
+            )
+        else:
+            self.default_content_type = default_content_type
 
         # Auto-populate prefixes from manifest if not provided
         if prefixes is None:

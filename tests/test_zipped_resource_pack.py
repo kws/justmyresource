@@ -389,3 +389,74 @@ def test_zipped_pack_default_pack_info():
             assert pack_info.description == "Resource pack"
             assert pack_info.source_url is None
             assert pack_info.license_spdx is None
+
+
+def test_zipped_pack_content_type_from_manifest():
+    """Test ZippedResourcePack reading content_type from manifest."""
+    manifest_with_format = {
+        "pack": {
+            "name": "test-pack",
+            "version": "1.0.0",
+        },
+        "contents": {
+            "format": "image/svg+xml",
+            "icon_count": 100,
+        },
+    }
+
+    with patch("justmyresource.pack_utils.files") as mock_files:
+        mock_package = MagicMock()
+        mock_files.return_value = mock_package
+        mock_manifest_path = MagicMock()
+        mock_package.__truediv__.return_value = mock_manifest_path
+
+        manifest_json = json.dumps(manifest_with_format)
+        with patch("builtins.open", mock_open(read_data=manifest_json)):
+            # Don't provide default_content_type explicitly - should read from manifest
+            pack = ZippedResourcePack(package_name="test_package")
+
+            assert pack.default_content_type == "image/svg+xml"
+
+
+def test_zipped_pack_explicit_content_type_override_manifest():
+    """Test that explicit content_type overrides manifest format."""
+    manifest_with_format = {
+        "pack": {
+            "name": "test-pack",
+            "version": "1.0.0",
+        },
+        "contents": {
+            "format": "image/svg+xml",
+        },
+    }
+
+    with patch("justmyresource.pack_utils.files") as mock_files:
+        mock_package = MagicMock()
+        mock_files.return_value = mock_package
+        mock_manifest_path = MagicMock()
+        mock_package.__truediv__.return_value = mock_manifest_path
+
+        manifest_json = json.dumps(manifest_with_format)
+        with patch("builtins.open", mock_open(read_data=manifest_json)):
+            # Provide explicit content_type - should override manifest
+            pack = ZippedResourcePack(
+                package_name="test_package",
+                default_content_type="image/png",
+            )
+
+            assert pack.default_content_type == "image/png"
+
+
+def test_zipped_pack_default_content_type_when_manifest_missing():
+    """Test ZippedResourcePack default content_type when manifest is missing."""
+    with patch("justmyresource.pack_utils.files") as mock_files:
+        mock_package = MagicMock()
+        mock_files.return_value = mock_package
+        mock_manifest_path = MagicMock()
+        mock_package.__truediv__.return_value = mock_manifest_path
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            # No default_content_type and no manifest - should use fallback
+            pack = ZippedResourcePack(package_name="test_package")
+
+            assert pack.default_content_type == "application/octet-stream"
